@@ -1,6 +1,14 @@
 // FreeLang v9 메모리 시스템 (벡터 저장소)
 // AGENT와 PROMPT를 위한 컨텍스트 관리
 
+// ==================== 검색 결과 ====================
+
+struct MemorySearchResult {
+    item: Memory
+    matched: bool
+    rank: i32
+}
+
 // ==================== 메모리 저장소 ====================
 
 struct Memory {
@@ -13,13 +21,26 @@ struct Memory {
 
 struct MemoryStore {
     memories: [Memory]
-    index: [str]  // 빠른 검색용 인덱스
+    index: [str]           ;; 빠른 검색용 인덱스
+    max_size: i32          ;; 0이면 무제한, > 0이면 FIFO 정책 적용
+    eviction_count: i32    ;; 제거된 항목 수
 }
 
 fn memory_store_new() -> MemoryStore {
     MemoryStore {
         memories: [],
-        index: []
+        index: [],
+        max_size: 0,       ;; 무제한
+        eviction_count: 0
+    }
+}
+
+fn memory_store_new_bounded(max_size: i32) -> MemoryStore {
+    MemoryStore {
+        memories: [],
+        index: [],
+        max_size: max_size,   ;; 크기 제한 활성화
+        eviction_count: 0
     }
 }
 
@@ -28,11 +49,12 @@ fn memory_store_new() -> MemoryStore {
 fn memory_store_add(store: MemoryStore, id: str, content: str, metadata: [str]) -> MemoryStore {
     println("[MEMORY] Adding: " + id)
 
-    // 임베딩 생성 (시뮬레이션)
+    ;; 임베딩 생성 (시뮬레이션: 각 차원별 다른 값)
     var embedding: [f64] = []
     var i: i32 = 0
     while i < 5 {
-        embedding.push(0.5)
+        var val = f64((i + 1) * 17 % 100) / 100.0
+        embedding.push(val)
         i = i + 1
     }
 
@@ -42,6 +64,24 @@ fn memory_store_add(store: MemoryStore, id: str, content: str, metadata: [str]) 
         embedding: embedding,
         metadata: metadata,
         timestamp: "2026-04-03T00:00:00Z"
+    }
+
+    ;; FIFO 정책: max_size 제한이 있고 가득 찼으면 첫 번째 항목 제거
+    if store.max_size > 0 && length(store.memories) >= store.max_size {
+        var j: i32 = 0
+        var new_memories: [Memory] = []
+        var new_index: [str] = []
+
+        while j < length(store.memories) - 1 {
+            new_memories.push(store.memories[j + 1])
+            new_index.push(store.index[j + 1])
+            j = j + 1
+        }
+
+        store.memories = new_memories
+        store.index = new_index
+        store.eviction_count = store.eviction_count + 1
+        println("  Pool full, evicted oldest. (total evicted: " + str(store.eviction_count) + ")")
     }
 
     store.memories.push(mem)
@@ -65,7 +105,7 @@ fn memory_store_search(store: MemoryStore, query: str, limit: i32) -> [Memory] {
     while i < length(store.memories) && count < limit {
         var mem = store.memories[i]
 
-        // 간단한 문자열 매칭 (향후: 실제 벡터 유사도)
+        ;; 간단한 문자열 매칭
         if contains(mem.content, query) {
             results.push(mem)
             count = count + 1
@@ -76,6 +116,38 @@ fn memory_store_search(store: MemoryStore, query: str, limit: i32) -> [Memory] {
     }
 
     println("  Results: " + str(length(results)) + " items")
+
+    results
+}
+
+fn memory_store_search_ranked(store: MemoryStore, query: str, limit: i32) -> [MemorySearchResult] {
+    println("[SEARCH-RANKED] Query: " + query)
+
+    var results: [MemorySearchResult] = []
+    var rank: i32 = 1
+    var count: i32 = 0
+
+    var i: i32 = 0
+    while i < length(store.memories) && count < limit {
+        var mem = store.memories[i]
+
+        ;; 문자열 매칭으로 순위 매김
+        if contains(mem.content, query) {
+            var search_result = MemorySearchResult {
+                item: mem,
+                matched: true,
+                rank: rank
+            }
+            results.push(search_result)
+            count = count + 1
+            println("  [Rank " + str(rank) + "] Found: " + mem.id)
+            rank = rank + 1
+        }
+
+        i = i + 1
+    }
+
+    println("  Results: " + str(length(results)) + " items (ranked)")
 
     results
 }
@@ -262,12 +334,12 @@ fn agent_memory_context(mem: AgentMemory) -> str {
 
 fn main() {
     println("╔════════════════════════════════════════╗")
-    println("║  v9 메모리 시스템 (벡터 저장소)        ║")
+    println("║  v9 메모리 시스템 (벡터 저장소) 개선   ║")
     println("╚════════════════════════════════════════╝")
     println("")
 
-    // 테스트 1: 메모리 저장소
-    println("1️⃣ 메모리 저장소")
+    ;; 테스트 1: 메모리 저장소 (무제한)
+    println("1️⃣ 메모리 저장소 (무제한)")
     var store = memory_store_new()
     var meta1: [str] = ["topic:ai", "category:research"]
     store = memory_store_add(store, "mem_001", "FreeLang is a powerful programming language", meta1)
@@ -275,45 +347,71 @@ fn main() {
     store = memory_store_add(store, "mem_002", "AI agents can solve complex problems", meta2)
     println("")
 
-    // 테스트 2: 메모리 검색
-    println("2️⃣ 메모리 검색")
+    ;; 테스트 2: 메모리 검색 (기본)
+    println("2️⃣ 메모리 검색 (기본)")
     var results = memory_store_search(store, "FreeLang", 10)
     println("")
 
-    // 테스트 3: 대화 히스토리
-    println("3️⃣ 대화 히스토리")
+    ;; 테스트 3: 순위 포함 메모리 검색
+    println("3️⃣ 메모리 검색 (순위 포함)")
+    var ranked_results = memory_store_search_ranked(store, "language", 10)
+    var r: i32 = 0
+    while r < length(ranked_results) {
+        var item = ranked_results[r].item
+        var rank = ranked_results[r].rank
+        println("  Result #" + str(rank) + ": " + item.id)
+        r = r + 1
+    }
+    println("")
+
+    ;; 테스트 4: FIFO 메모리 (제한된 크기)
+    println("4️⃣ 메모리 저장소 (FIFO 정책, max=2)")
+    var bounded_store = memory_store_new_bounded(2)
+    var m1: [str] = ["tag1"]
+    bounded_store = memory_store_add(bounded_store, "item1", "First memory item", m1)
+    var m2: [str] = ["tag2"]
+    bounded_store = memory_store_add(bounded_store, "item2", "Second memory item", m2)
+    println("  After 2 adds - count: " + str(length(bounded_store.memories)))
+    var m3: [str] = ["tag3"]
+    bounded_store = memory_store_add(bounded_store, "item3", "Third memory (evicts item1)", m3)
+    println("  After 3rd add (FIFO) - count: " + str(length(bounded_store.memories)))
+    println("  Eviction count: " + str(bounded_store.eviction_count))
+    println("")
+
+    ;; 테스트 5: 대화 히스토리
+    println("5️⃣ 대화 히스토리")
     var conv = conversation_new("user_123")
     conv = conversation_add_message(conv, "user", "Hello, agent!")
     conv = conversation_add_message(conv, "agent", "Hi! How can I help?")
     conv = conversation_add_message(conv, "user", "Tell me about FreeLang")
     println("")
 
-    // 테스트 4: 컨텍스트 윈도우
-    println("4️⃣ 컨텍스트 윈도우")
+    ;; 테스트 6: 컨텍스트 윈도우
+    println("6️⃣ 컨텍스트 윈도우")
     var window = context_window_new(1000)
     window = context_window_add(window, "System prompt: You are a helpful assistant", 1)
     window = context_window_add(window, conversation_get_context(conv), 2)
     println("  Remaining: " + str(context_window_remaining(window)) + " tokens")
     println("")
 
-    // 테스트 5: 에이전트 메모리
-    println("5️⃣ 에이전트 메모리")
+    ;; 테스트 7: 에이전트 메모리
+    println("7️⃣ 에이전트 메모리")
     var agent_mem = agent_memory_new("agent_001")
     agent_mem = agent_memory_remember(agent_mem, "task_123", "Analyze user feedback")
     agent_mem = agent_memory_remember(agent_mem, "result_123", "Positive feedback: 85%")
     println("")
 
-    // 테스트 6: 메모리 회상
-    println("6️⃣ 메모리 회상")
+    ;; 테스트 8: 메모리 회상
+    println("8️⃣ 메모리 회상")
     var recalled = agent_memory_recall(agent_mem, "task")
     println("  Retrieved: " + str(length(recalled)) + " items")
     println("")
 
-    // 테스트 7: 전체 컨텍스트
-    println("7️⃣ 전체 에이전트 컨텍스트")
+    ;; 테스트 9: 전체 컨텍스트
+    println("9️⃣ 전체 에이전트 컨텍스트")
     var full_context = agent_memory_context(agent_mem)
     println(full_context)
 
     println("")
-    println("✅ 메모리 시스템 완료!")
+    println("✅ 메모리 시스템 (개선) 완료!")
 }

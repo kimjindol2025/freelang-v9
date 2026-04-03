@@ -1,6 +1,14 @@
 // FreeLang v9 표준 라이브러리 3: 메모리 & 벡터 저장소
 // 컨텍스트 관리, 임베딩, 의미론적 검색
 
+// ==================== 검색 결과 ====================
+
+struct SearchResult {
+    item: Embedding
+    score: f64
+    rank: i32
+}
+
 // ==================== 임베딩 ====================
 
 struct Embedding {
@@ -14,31 +22,48 @@ struct EmbeddingStore {
     embeddings: [Embedding]
     dimension: i32
     size: i32
+    max_size: i32        ;; 0이면 무제한, > 0이면 FIFO 정책 적용
+    eviction_count: i32  ;; 제거된 항목 수
 }
 
 fn embedding_store_new(dimension: i32) -> EmbeddingStore {
     EmbeddingStore {
         embeddings: [],
         dimension: dimension,
-        size: 0
+        size: 0,
+        max_size: 0,          ;; 무제한
+        eviction_count: 0
+    }
+}
+
+fn embedding_store_new_bounded(dimension: i32, max_size: i32) -> EmbeddingStore {
+    EmbeddingStore {
+        embeddings: [],
+        dimension: dimension,
+        size: 0,
+        max_size: max_size,   ;; 크기 제한 활성화
+        eviction_count: 0
     }
 }
 
 fn embed_text(text: str, dim: i32) -> [f64] {
-    ;; 간단한 해시 기반 임베딩 (실제로는 LLM 사용)
+    ;; 개선된 해시 기반 임베딩 - 각 차원별 다른 값 생성
     var vector: [f64] = []
     var i: i32 = 0
 
     while i < dim {
-        var hash: i32 = 0
+        var hash: i32 = (i + 1) * 7  ;; 차원별 시드
         var j: i32 = 0
 
         while j < length(text) {
-            hash = hash + char_code(substring(text, j, j + 1))
+            var ch_code = char_code(substring(text, j, j + 1))
+            hash = hash * 31 + ch_code + (i * 3)  ;; 차원을 포함하여 계산
             j = j + 1
         }
 
-        var val = f64(hash % 1000) / 1000.0
+        ;; 0.0 ~ 1.0 범위로 정규화 (음수 처리)
+        var normalized = (hash % 1000 + 1000) % 1000
+        var val = f64(normalized) / 1000.0
         vector.push(val)
 
         i = i + 1
@@ -78,10 +103,25 @@ fn embedding_store_add(store: EmbeddingStore, id: str, text: str, metadata: [str
         metadata: metadata
     }
 
-    store.embeddings.push(emb)
-    store.size = store.size + 1
+    ;; FIFO 정책: max_size 제한이 있고 가득 찼으면 첫 번째 항목 제거
+    if store.max_size > 0 && store.size >= store.max_size {
+        var i: i32 = 0
+        var new_embeddings: [Embedding] = []
 
-    println("[EMBED] Added: " + id + " (dim: " + str(store.dimension) + ")")
+        while i < length(store.embeddings) - 1 {
+            new_embeddings.push(store.embeddings[i + 1])
+            i = i + 1
+        }
+
+        store.embeddings = new_embeddings
+        store.eviction_count = store.eviction_count + 1
+        println("[EMBED] Pool full, evicted oldest. (total evicted: " + str(store.eviction_count) + ")")
+    } else {
+        store.size = store.size + 1
+    }
+
+    store.embeddings.push(emb)
+    println("[EMBED] Added: " + id + " (dim: " + str(store.dimension) + ", size: " + str(length(store.embeddings)) + ")")
 
     store
 }
@@ -121,6 +161,55 @@ fn embedding_store_search(store: EmbeddingStore, query: str, top_k: i32) -> [Emb
     }
 
     println("[SEARCH] Query: " + query + " → " + str(length(results)) + " results")
+
+    results
+}
+
+fn embedding_store_search_ranked(store: EmbeddingStore, query: str, top_k: i32) -> [SearchResult] {
+    var query_vector = embed_text(query, store.dimension)
+    var results: [SearchResult] = []
+    var scores: [f64] = []
+    var indices: [i32] = []
+
+    ;; 모든 임베딩과 유사도 계산
+    var i: i32 = 0
+    while i < length(store.embeddings) {
+        var similarity = cosine_similarity(query_vector, store.embeddings[i].vector)
+        scores.push(similarity)
+        indices.push(i)
+        i = i + 1
+    }
+
+    ;; 상위 k개 선택 (점수와 함께 저장)
+    var rank: i32 = 1
+    var j: i32 = 0
+    while j < top_k && j < length(store.embeddings) {
+        var max_idx_in_scores: i32 = 0
+        var max_score: f64 = 0.0
+        var k: i32 = 0
+
+        while k < length(scores) {
+            if scores[k] > max_score {
+                max_score = scores[k]
+                max_idx_in_scores = k
+            }
+            k = k + 1
+        }
+
+        var original_idx = indices[max_idx_in_scores]
+        var search_result = SearchResult {
+            item: store.embeddings[original_idx],
+            score: max_score,
+            rank: rank
+        }
+        results.push(search_result)
+        scores[max_idx_in_scores] = 0.0  ;; 이미 선택된 것 제외
+
+        rank = rank + 1
+        j = j + 1
+    }
+
+    println("[SEARCH-RANKED] Query: " + query + " → " + str(length(results)) + " results (with scores)")
 
     results
 }
@@ -225,7 +314,7 @@ fn main() {
     println("")
 
     ;; 테스트 1: 임베딩 저장소 생성
-    println("✅ 테스트 1: 임베딩 저장소")
+    println("✅ 테스트 1: 임베딩 저장소 (무제한)")
     var store = embedding_store_new(5)
     store = embedding_store_add(store, "doc1", "FreeLang is powerful", ["ai", "language"])
     store = embedding_store_add(store, "doc2", "AI is the future", ["ai", "technology"])
@@ -234,13 +323,37 @@ fn main() {
     println("")
 
     ;; 테스트 2: 의미론적 검색
-    println("✅ 테스트 2: 의미론적 검색")
+    println("✅ 테스트 2: 의미론적 검색 (기본)")
     var results = embedding_store_search(store, "AI and language", 2)
     println("  Top results: " + str(length(results)))
     println("")
 
-    ;; 테스트 3: 컨텍스트 윈도우
-    println("✅ 테스트 3: 컨텍스트 윈도우")
+    ;; 테스트 3: 점수를 포함한 검색
+    println("✅ 테스트 3: 검색 (유사도 점수 포함)")
+    var ranked_results = embedding_store_search_ranked(store, "AI language", 2)
+    var r: i32 = 0
+    while r < length(ranked_results) {
+        var item = ranked_results[r].item
+        var score = ranked_results[r].score
+        var rank = ranked_results[r].rank
+        println("  [Rank " + str(rank) + "] " + item.id + " (score: " + str(score) + ")")
+        r = r + 1
+    }
+    println("")
+
+    ;; 테스트 4: FIFO 메모리 (제한된 크기)
+    println("✅ 테스트 4: 임베딩 저장소 (FIFO 정책, max=2)")
+    var bounded_store = embedding_store_new_bounded(3, 2)
+    bounded_store = embedding_store_add(bounded_store, "item1", "First document", ["tag1"])
+    bounded_store = embedding_store_add(bounded_store, "item2", "Second document", ["tag2"])
+    println("  After 2 adds - size: " + str(length(bounded_store.embeddings)))
+    bounded_store = embedding_store_add(bounded_store, "item3", "Third document (evicts item1)", ["tag3"])
+    println("  After 3rd add (FIFO) - size: " + str(length(bounded_store.embeddings)))
+    println("  Eviction count: " + str(bounded_store.eviction_count))
+    println("")
+
+    ;; 테스트 5: 컨텍스트 윈도우
+    println("✅ 테스트 5: 컨텍스트 윈도우")
     var window = context_window_new(100)
     window = context_window_add(window, "System: You are helpful")
     window = context_window_add(window, "User: Hello")
@@ -248,8 +361,8 @@ fn main() {
     println("  Remaining tokens: " + str(context_window_remaining(window)))
     println("")
 
-    ;; 테스트 4: 메모리 풀
-    println("✅ 테스트 4: 메모리 풀")
+    ;; 테스트 6: 메모리 풀
+    println("✅ 테스트 6: 메모리 풀")
     var pool = memory_pool_new(3)
     pool = memory_pool_remember(pool, "Memory 1: First thing")
     pool = memory_pool_remember(pool, "Memory 2: Second thing")
@@ -258,8 +371,8 @@ fn main() {
     println("  Pool size: " + str(memory_pool_size(pool)))
     println("")
 
-    ;; 테스트 5: 메모리 회상
-    println("✅ 테스트 5: 메모리 회상")
+    ;; 테스트 7: 메모리 회상
+    println("✅ 테스트 7: 메모리 회상")
     var recalled = memory_pool_recall(pool)
     var i: i32 = 0
     while i < length(recalled) {
@@ -268,5 +381,5 @@ fn main() {
     }
     println("")
 
-    println("✅ v9 메모리 & 벡터 라이브러리 완성!")
+    println("✅ v9 메모리 & 벡터 라이브러리 (개선) 완성!")
 }
