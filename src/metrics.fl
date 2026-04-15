@@ -1,0 +1,346 @@
+; ============================================================================
+; FreeLang v9 — Phase 155: Metrics Collection & Aggregation
+; Prometheus 호환 메트릭 저장소 및 쿼리 엔진
+; ============================================================================
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Metric Types & Storage
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 메트릭 타입 정의
+(def metric-types #{:counter :gauge :histogram :summary})
+
+; 글로벌 메트릭 저장소
+(def global-metrics (atom {}))
+
+; 메트릭 레지스트리 (중복 방지)
+(def metric-registry (atom {}))
+
+; 메트릭 생성 (Counter)
+(defn create-counter [name help &:key [labels {}]]
+  "Create a counter metric (only increases)"
+  (let [metric-id (str name "_" (hash labels))
+        metric {:name name
+                :type :counter
+                :help help
+                :labels labels
+                :value 0
+                :created-at (now)
+                :samples []}]
+    (do
+      (swap! metric-registry assoc metric-id true)
+      (swap! global-metrics assoc metric-id metric)
+      metric)))
+
+; 메트릭 생성 (Gauge)
+(defn create-gauge [name help &:key [labels {}] [initial-value 0]]
+  "Create a gauge metric (can increase/decrease)"
+  (let [metric-id (str name "_" (hash labels))
+        metric {:name name
+                :type :gauge
+                :help help
+                :labels labels
+                :value initial-value
+                :created-at (now)
+                :samples []}]
+    (do
+      (swap! metric-registry assoc metric-id true)
+      (swap! global-metrics assoc metric-id metric)
+      metric)))
+
+; 메트릭 생성 (Histogram)
+(defn create-histogram [name help &:key [labels {}] [buckets [0.005 0.01 0.025 0.05 0.1 0.25 0.5 1.0 2.5 5.0 10.0]]]
+  "Create a histogram metric (for distributions)"
+  (let [metric-id (str name "_" (hash labels))
+        metric {:name name
+                :type :histogram
+                :help help
+                :labels labels
+                :buckets buckets
+                :sum 0
+                :count 0
+                :bucket-counts (zipmap buckets (repeat (count buckets) 0))
+                :created-at (now)
+                :samples []}]
+    (do
+      (swap! metric-registry assoc metric-id true)
+      (swap! global-metrics assoc metric-id metric)
+      metric)))
+
+; 메트릭 생성 (Summary)
+(defn create-summary [name help &:key [labels {}] [max-age-seconds 600]]
+  "Create a summary metric (for latency percentiles)"
+  (let [metric-id (str name "_" (hash labels))
+        metric {:name name
+                :type :summary
+                :help help
+                :labels labels
+                :values []
+                :sum 0
+                :count 0
+                :max-age-seconds max-age-seconds
+                :created-at (now)
+                :samples []}]
+    (do
+      (swap! metric-registry assoc metric-id true)
+      (swap! global-metrics assoc metric-id metric)
+      metric)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Metric Recording
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Counter 값 증가
+(defn increment-counter [metric-id &:key [amount 1] [timestamp (now)]]
+  "Increment counter by amount"
+  (swap! global-metrics update-in [metric-id :value] + amount)
+  (swap! global-metrics update-in [metric-id :samples] conj
+    {:timestamp timestamp :value amount}))
+
+; Gauge 값 설정
+(defn set-gauge [metric-id value &:key [timestamp (now)]]
+  "Set gauge to specific value"
+  (swap! global-metrics assoc-in [metric-id :value] value)
+  (swap! global-metrics update-in [metric-id :samples] conj
+    {:timestamp timestamp :value value}))
+
+; Gauge 값 변경
+(defn update-gauge [metric-id delta &:key [timestamp (now)]]
+  "Update gauge by delta (positive or negative)"
+  (swap! global-metrics update-in [metric-id :value] + delta)
+  (swap! global-metrics update-in [metric-id :samples] conj
+    {:timestamp timestamp :value delta}))
+
+; Histogram 샘플 기록
+(defn observe-histogram [metric-id value &:key [timestamp (now)]]
+  "Record observation in histogram"
+  (let [metric (get @global-metrics metric-id)
+        buckets (:buckets metric)
+        updated-counts (map (fn [b] (if (>= value b) 1 0)) buckets)]
+    (do
+      (swap! global-metrics update-in [metric-id :sum] + value)
+      (swap! global-metrics update-in [metric-id :count] inc)
+      (swap! global-metrics update-in [metric-id :bucket-counts]
+        (fn [counts]
+          (zipmap buckets (map + (vals counts) updated-counts))))
+      (swap! global-metrics update-in [metric-id :samples] conj
+        {:timestamp timestamp :value value}))))
+
+; Summary 샘플 기록
+(defn observe-summary [metric-id value &:key [timestamp (now)]]
+  "Record observation in summary"
+  (do
+    (swap! global-metrics update-in [metric-id :values] conj value)
+    (swap! global-metrics update-in [metric-id :sum] + value)
+    (swap! global-metrics update-in [metric-id :count] inc)
+    (swap! global-metrics update-in [metric-id :samples] conj
+      {:timestamp timestamp :value value})))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Metric Query & Aggregation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 메트릭 조회
+(defn get-metric [metric-id]
+  "Get metric by ID"
+  (get @global-metrics metric-id))
+
+; 이름으로 메트릭 조회
+(defn query-metrics-by-name [name]
+  "Query all metrics matching name"
+  (filter (fn [m] (= (:name (second m)) name)) @global-metrics))
+
+; 라벨로 필터링
+(defn filter-by-labels [metrics label-filter]
+  "Filter metrics by labels"
+  (filter (fn [[_ m]]
+    (every? (fn [[k v]] (= (get (:labels m) k) v)) label-filter))
+  metrics))
+
+; 집계: 합계
+(defn aggregate-sum [metrics]
+  "Sum metric values"
+  (apply + (map (fn [[_ m]] (:value m)) metrics)))
+
+; 집계: 평균
+(defn aggregate-avg [metrics]
+  "Average metric values"
+  (if (empty? metrics)
+    0
+    (/ (aggregate-sum metrics) (count metrics))))
+
+; 집계: 최대값
+(defn aggregate-max [metrics]
+  "Max metric value"
+  (if (empty? metrics)
+    0
+    (apply max (map (fn [[_ m]] (:value m)) metrics))))
+
+; 집계: 최소값
+(defn aggregate-min [metrics]
+  "Min metric value"
+  (if (empty? metrics)
+    0
+    (apply min (map (fn [[_ m]] (:value m)) metrics))))
+
+; 시계열 샘플 쿼리 (시간 범위)
+(defn query-samples [metric-id start-time end-time]
+  "Query samples within time range"
+  (let [metric (get @global-metrics metric-id)
+        samples (:samples metric)]
+    (filter (fn [s]
+      (and (>= (:timestamp s) start-time)
+           (<= (:timestamp s) end-time)))
+      samples)))
+
+; Rate 계산 (초당 변화)
+(defn calculate-rate [metric-id duration-ms]
+  "Calculate rate of change per second"
+  (let [metric (get @global-metrics metric-id)
+        samples (:samples metric)
+        recent (take-last 2 samples)]
+    (if (< (count recent) 2)
+      0
+      (let [first-val (:value (first recent))
+            second-val (:value (second recent))
+            time-diff (/ (- (:timestamp (second recent)) (:timestamp (first recent))) 1000)]
+        (if (> time-diff 0)
+          (/ (- second-val first-val) time-diff)
+          0)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Histogram Percentiles
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Histogram에서 백분위 계산
+(defn histogram-percentile [metric-id percentile]
+  "Calculate percentile from histogram"
+  (let [metric (get @global-metrics metric-id)
+        count (:count metric)
+        buckets (:buckets metric)
+        bucket-counts (:bucket-counts metric)
+        target-count (* count percentile)]
+    (first (filter (fn [b]
+      (>= (get bucket-counts b) target-count))
+      buckets))))
+
+; Summary에서 백분위 계산
+(defn summary-percentile [metric-id percentile]
+  "Calculate percentile from summary values"
+  (let [metric (get @global-metrics metric-id)
+        values (sort (:values metric))
+        count (count values)
+        idx (Math/floor (* percentile (dec count)))]
+    (if (and (>= idx 0) (< idx count))
+      (nth values idx)
+      0)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Metric Exposition Format (Prometheus Compatible)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Prometheus 텍스트 형식 생성
+(defn format-metric-prometheus [metric-id]
+  "Format metric in Prometheus text exposition format"
+  (let [metric (get @global-metrics metric-id)
+        name (:name metric)
+        help (:help metric)
+        type (:type metric)
+        value (:value metric)
+        labels-str (if (empty? (:labels metric))
+                     ""
+                     (str "{"
+                          (apply str (interpose "," (map (fn [[k v]] (str k "=\"" v "\"")) (:labels metric))))
+                          "}"))]
+    (case type
+      :counter (str "# HELP " name " " help "\n"
+                   "# TYPE " name " counter\n"
+                   name labels-str " " value "\n")
+      :gauge   (str "# HELP " name " " help "\n"
+                   "# TYPE " name " gauge\n"
+                   name labels-str " " value "\n")
+      :histogram (let [buckets (:buckets metric)
+                      bucket-counts (:bucket-counts metric)]
+                  (str "# HELP " name " " help "\n"
+                       "# TYPE " name " histogram\n"
+                       (apply str (map (fn [b]
+                         (str name "_bucket{le=\"" b "\"} " (get bucket-counts b) "\n"))
+                         buckets))
+                       name "_sum " (:sum metric) "\n"
+                       name "_count " (:count metric) "\n"))
+      :summary (str "# HELP " name " " help "\n"
+                   "# TYPE " name " summary\n"
+                   name "_sum " (:sum metric) "\n"
+                   name "_count " (:count metric) "\n")
+      "")))
+
+; 모든 메트릭을 Prometheus 형식으로 생성
+(defn generate-prometheus-exposition []
+  "Generate all metrics in Prometheus exposition format"
+  (apply str (map format-metric-prometheus (keys @global-metrics))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Cardinality Management
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 메트릭 카디널리티 확인
+(defn check-cardinality [&:key [limit 10000]]
+  "Check total metric cardinality"
+  (let [total (count @global-metrics)]
+    {:cardinality total
+     :within-limit (< total limit)
+     :usage-percentage (Math/round (* 100 (/ total limit)))}))
+
+; 오래된 샘플 정리 (TTL)
+(defn cleanup-old-samples [metric-id max-age-seconds]
+  "Remove samples older than max-age"
+  (let [now (now)
+        cutoff (- now (* max-age-seconds 1000))]
+    (swap! global-metrics update-in [metric-id :samples]
+      (fn [samples] (filter (fn [s] (> (:timestamp s) cutoff)) samples)))))
+
+; 메트릭 메모리 사용량
+(defn estimate-metrics-memory []
+  "Estimate memory usage of metrics"
+  (let [metric-count (count @global-metrics)
+        sample-count (apply + (map (fn [[_ m]] (count (:samples m))) @global-metrics))
+        bytes-per-metric 500
+        bytes-per-sample 100
+        total-bytes (+ (* metric-count bytes-per-metric)
+                       (* sample-count bytes-per-sample))]
+    {:metric-count metric-count
+     :sample-count sample-count
+     :estimated-mb (/ total-bytes 1048576)
+     :estimated-bytes total-bytes}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 7. Utility Functions
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 모든 메트릭 나열
+(defn list-all-metrics []
+  "List all registered metrics"
+  (map (fn [[id m]] {:id id :name (:name m) :type (:type m)}) @global-metrics))
+
+; 메트릭 초기화
+(defn reset-metrics []
+  "Clear all metrics"
+  (do
+    (reset! global-metrics {})
+    (reset! metric-registry {})))
+
+; 메트릭 통계
+(defn metrics-stats []
+  "Get statistics about metrics"
+  (let [all-metrics (vals @global-metrics)
+        type-counts (frequencies (map :type all-metrics))]
+    {:total-metrics (count all-metrics)
+     :by-type type-counts
+     :memory-estimate (estimate-metrics-memory)
+     :cardinality (check-cardinality)}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Metrics Collection & Aggregation (Phase 155) loaded")

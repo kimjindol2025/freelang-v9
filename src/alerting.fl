@@ -1,0 +1,280 @@
+; ============================================================================
+; FreeLang v9 — Phase 155: Alert Rules & State Machine
+; Prometheus 호환 알림 규칙 평가 및 상태 관리
+; ============================================================================
+
+(load "src/metrics.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Alert Rule Definition
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 글로벌 알림 규칙 레지스트리
+(def global-alert-rules (atom {}))
+
+; 글로벌 알림 상태
+(def global-alert-state (atom {}))
+
+; 알림 규칙 정의
+(defn define-alert-rule [name
+                         &:key
+                         [expr ""]
+                         [duration-seconds 300]
+                         [severity "critical"]
+                         [description ""]
+                         [annotations {}]]
+
+  "Define an alert rule"
+  (let [rule {:name name
+              :expr expr
+              :duration-seconds duration-seconds
+              :severity severity
+              :description description
+              :annotations annotations
+              :created-at (now)
+              :evaluations []}]
+    (do
+      (swap! global-alert-rules assoc name rule)
+      (swap! global-alert-state assoc name {:state :INACTIVE :fired-at nil :value nil})
+      rule)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Alert Expression Evaluation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 간단한 비교 연산자
+(defn evaluate-comparison [metric-name operator threshold]
+  "Evaluate metric against threshold"
+  (let [metrics (query-metrics-by-name metric-name)]
+    (some (fn [[_ m]]
+      (case operator
+        ">" (> (:value m) threshold)
+        ">=" (>= (:value m) threshold)
+        "<" (< (:value m) threshold)
+        "<=" (<= (:value m) threshold)
+        "==" (= (:value m) threshold)
+        "!=" (not= (:value m) threshold)
+        false))
+      metrics)))
+
+; 집계 연산자
+(defn evaluate-aggregation [agg-op metric-name operator threshold]
+  "Evaluate aggregated metric"
+  (let [metrics (query-metrics-by-name metric-name)
+        agg-value (case agg-op
+                    "sum" (aggregate-sum metrics)
+                    "avg" (aggregate-avg metrics)
+                    "max" (aggregate-max metrics)
+                    "min" (aggregate-min metrics)
+                    0)]
+    (case operator
+      ">" (> agg-value threshold)
+      ">=" (>= agg-value threshold)
+      "<" (< agg-value threshold)
+      "<=" (<= agg-value threshold)
+      "==" (= agg-value threshold)
+      "!=" (not= agg-value threshold)
+      false)))
+
+; 비율(Rate) 평가
+(defn evaluate-rate [metric-name duration-ms operator threshold]
+  "Evaluate rate of change"
+  (let [rate (calculate-rate metric-name duration-ms)]
+    (case operator
+      ">" (> rate threshold)
+      ">=" (>= rate threshold)
+      "<" (< rate threshold)
+      "<=" (<= rate threshold)
+      "==" (= rate threshold)
+      "!=" (not= rate threshold)
+      false)))
+
+; 알림 규칙 평가
+(defn evaluate-alert-rule [rule-name]
+  "Evaluate single alert rule"
+  (let [rule (get @global-alert-rules rule-name)
+        expr (:expr rule)
+        prev-state (get @global-alert-state rule-name)]
+    (if (nil? rule)
+      nil
+      (let [condition-met (cond
+                           (str-includes? expr ">") (evaluate-comparison (subs expr 0 (str-indexOf expr ">")) ">" (parse-int (subs expr (inc (str-indexOf expr ">")))))
+                           (str-includes? expr "<") (evaluate-comparison (subs expr 0 (str-indexOf expr "<")) "<" (parse-int (subs expr (inc (str-indexOf expr "<")))))
+                           (str-includes? expr "==") (evaluate-comparison (subs expr 0 (str-indexOf expr "==")) "==" (parse-int (subs expr (+ 2 (str-indexOf expr "==")))))
+                           :else false)
+            duration (:duration-seconds rule)
+            elapsed-seconds (if (:fired-at prev-state)
+                             (/ (- (now) (:fired-at prev-state)) 1000)
+                             0)]
+        (assoc rule
+          :condition-met condition-met
+          :elapsed-seconds elapsed-seconds
+          :should-fire (and condition-met (>= elapsed-seconds duration)))))))
+
+; 모든 알림 규칙 평가
+(defn evaluate-all-alert-rules []
+  "Evaluate all alert rules"
+  (let [rule-names (keys @global-alert-rules)]
+    (map evaluate-alert-rule rule-names)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Alert State Machine
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 알림 상태: INACTIVE / PENDING / FIRING / RESOLVED
+; 상태 전이 규칙:
+; INACTIVE + condition=true   → PENDING
+; PENDING + duration=met      → FIRING
+; FIRING + condition=false    → RESOLVED
+; RESOLVED                    → INACTIVE
+
+; 상태 업데이트
+(defn update-alert-state [rule-name evaluated-rule]
+  "Update alert state based on evaluation"
+  (let [current (get @global-alert-state rule-name)
+        state (:state current)
+        condition-met (:condition-met evaluated-rule)
+        should-fire (:should-fire evaluated-rule)
+        value (or (:value current) 0)]
+    (case state
+      :INACTIVE (if condition-met
+                  {:state :PENDING :fired-at (now) :value value}
+                  {:state :INACTIVE :fired-at nil :value value})
+      :PENDING (if should-fire
+                 {:state :FIRING :fired-at (now) :value value}
+                 (if condition-met
+                   {:state :PENDING :fired-at (:fired-at current) :value value}
+                   {:state :INACTIVE :fired-at nil :value value}))
+      :FIRING (if (not condition-met)
+               {:state :RESOLVED :fired-at (:fired-at current) :value value}
+               {:state :FIRING :fired-at (:fired-at current) :value value})
+      :RESOLVED (if (not condition-met)
+                 {:state :INACTIVE :fired-at nil :value value}
+                 {:state :FIRING :fired-at (now) :value value})
+      current)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Alert Lifecycle
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 알림 발생 (Firing)
+(defn fire-alert [rule-name &:key [value 0]]
+  "Fire an alert"
+  (let [rule (get @global-alert-rules rule-name)]
+    (when rule
+      (do
+        (swap! global-alert-state assoc-in [rule-name :state] :FIRING)
+        (swap! global-alert-state assoc-in [rule-name :fired-at] (now))
+        (swap! global-alert-state assoc-in [rule-name :value] value)
+        {:alert-name rule-name
+         :severity (:severity rule)
+         :description (:description rule)
+         :value value
+         :fired-at (now)}))))
+
+; 알림 해제 (Resolve)
+(defn resolve-alert [rule-name]
+  "Resolve an alert"
+  (let [rule (get @global-alert-rules rule-name)]
+    (when rule
+      (do
+        (swap! global-alert-state assoc-in [rule-name :state] :RESOLVED)
+        {:alert-name rule-name
+         :resolved-at (now)}))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Alert Notifications
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 알림 채널 정의
+(def alert-channels (atom {}))
+
+; 알림 채널 등록
+(defn register-alert-channel [channel-name handler]
+  "Register alert notification channel"
+  (swap! alert-channels assoc channel-name handler))
+
+; 알림 전송
+(defn send-alert [alert &:key [channels ["log"]]]
+  "Send alert to registered channels"
+  (doseq [channel channels]
+    (let [handler (get @alert-channels channel)]
+      (when handler
+        (handler alert)))))
+
+; 기본 로그 채널
+(defn log-alert-handler [alert]
+  "Default alert handler (logging)"
+  (println "[ALERT] " (:alert-name alert)
+           " (" (:severity alert) ")"
+           " Value: " (:value alert)))
+
+; 초기화: 기본 로그 채널 등록
+(do
+  (register-alert-channel "log" log-alert-handler))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Alert History & Tracking
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 알림 이력
+(def alert-history (atom []))
+
+; 알림 이력 기록
+(defn record-alert-event [rule-name event-type &:key [value nil]]
+  "Record alert event in history"
+  (swap! alert-history conj
+    {:rule-name rule-name
+     :event-type event-type
+     :timestamp (now)
+     :value value}))
+
+; 알림 이력 조회
+(defn get-alert-history [rule-name &:key [limit 100]]
+  "Get alert history for rule"
+  (take limit
+    (filter (fn [e] (= (:rule-name e) rule-name))
+      (reverse @alert-history))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 7. Alert Statistics
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 활성 알림 개수
+(defn count-active-alerts []
+  "Count currently firing alerts"
+  (count (filter (fn [[_ s]] (= (:state s) :FIRING))
+    @global-alert-state)))
+
+; 알림 통계
+(defn alert-statistics []
+  "Get alert system statistics"
+  (let [all-states (vals @global-alert-state)
+        state-counts (frequencies (map :state all-states))]
+    {:total-rules (count @global-alert-rules)
+     :total-alerts (count @global-alert-state)
+     :active-alerts (count-active-alerts)
+     :state-counts state-counts
+     :history-size (count @alert-history)}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 8. Alert Rule Validation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 알림 규칙 검증
+(defn validate-alert-rule [rule]
+  "Validate alert rule syntax and fields"
+  (let [errors []]
+    (cond
+      (empty? (:name rule)) (conj errors "Rule name is required")
+      (empty? (:expr rule)) (conj errors "Expression is required")
+      (< (:duration-seconds rule) 0) (conj errors "Duration must be positive")
+      (not (contains? #{:critical :warning :info} (:severity rule)))
+        (conj errors "Invalid severity level")
+      :else errors)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Alert Rules & State Machine (Phase 155) loaded")

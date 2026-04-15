@@ -1,0 +1,231 @@
+; ============================================================================
+; FreeLang v9 — Phase 155: Prometheus Exporter
+; /metrics 엔드포인트 및 HTTP 스크래핑 호환성
+; ============================================================================
+
+(load "src/metrics.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. HTTP Exposition Format (Text)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Prometheus 텍스트 형식 생성 (완전)
+(defn generate-prometheus-text []
+  "Generate metrics in Prometheus text exposition format"
+  (generate-prometheus-exposition))
+
+; HELP 라인 포맷
+(defn format-help-line [name help]
+  (str "# HELP " name " " help))
+
+; TYPE 라인 포맷
+(defn format-type-line [name type]
+  (str "# TYPE " name " " (name :counter :gauge :histogram :summary)))
+
+; 메트릭 라벨 포맷
+(defn format-labels [labels]
+  "Format labels for Prometheus line protocol"
+  (if (empty? labels)
+    ""
+    (str "{"
+         (apply str (interpose "," (map (fn [[k v]]
+           (str k "=\"" (str-replace (str v) "\"" "\\\"") "\""))
+           labels)))
+         "}")))
+
+; 메트릭 라인 포맷
+(defn format-metric-line [name labels value &:key [timestamp nil]]
+  "Format single metric line"
+  (let [timestamp-str (if timestamp (str " " timestamp) "")]
+    (str name (format-labels labels) " " value timestamp-str)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Metric Buckets & Quantiles
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Histogram 버킷 생성
+(defn generate-histogram-buckets [metric-id]
+  "Generate all histogram bucket lines"
+  (let [metric (get (deref global-metrics) metric-id)
+        name (:name metric)
+        labels (:labels metric)
+        buckets (:buckets metric)
+        bucket-counts (:bucket-counts metric)]
+    (apply str
+      (concat
+        (map (fn [b]
+          (let [count (get bucket-counts b)]
+            (format-metric-line (str name "_bucket")
+              (assoc labels "le" b)
+              count)))
+          buckets)
+        [(format-metric-line (str name "_bucket")
+          (assoc labels "le" "+Inf")
+          (:count metric))]
+        [(format-metric-line (str name "_sum") labels (:sum metric))]
+        [(format-metric-line (str name "_count") labels (:count metric))]))))
+
+; Summary 라인 생성
+(defn generate-summary-lines [metric-id]
+  "Generate summary metric lines with quantiles"
+  (let [metric (get (deref global-metrics) metric-id)
+        name (:name metric)
+        labels (:labels metric)
+        quantiles [0.5 0.9 0.99]]
+    (apply str
+      (concat
+        (map (fn [q]
+          (let [value (summary-percentile metric-id q)]
+            (format-metric-line name
+              (assoc labels "quantile" q)
+              value)))
+          quantiles)
+        [(format-metric-line (str name "_sum") labels (:sum metric))]
+        [(format-metric-line (str name "_count") labels (:count metric))]))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Scrape Endpoint Handler
+; ─────────────────────────────────────────────────────────────────────────────
+
+; /metrics 엔드포인트 핸들러
+(defn handle-metrics-request [req res]
+  "Handle /metrics scrape request"
+  (do
+    (res.writeHead 200 {
+      "Content-Type" "text/plain; version=0.0.4; charset=utf-8"
+      "Content-Encoding" "identity"
+      "Cache-Control" "no-cache, no-store, must-revalidate"
+    })
+    (res.end (generate-prometheus-text))))
+
+; OpenMetrics 형식 핸들러 (차세대)
+(defn handle-openmetrics-request [req res]
+  "Handle /metrics (OpenMetrics format) request"
+  (do
+    (res.writeHead 200 {
+      "Content-Type" "application/openmetrics-text; version=1.0.0; charset=utf-8"
+      "Cache-Control" "no-cache, no-store, must-revalidate"
+    })
+    (let [text (generate-prometheus-text)
+          with-eof (str text "# EOF\n")]
+      (res.end with-eof))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Prometheus Client Integration
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Prometheus 서버에 푸시 (Pushgateway)
+(defn push-metrics-to-prometheus [pushgateway-url job-name &:key [grouping-key {}]]
+  "Push metrics to Prometheus Pushgateway"
+  (fl-try
+    (let [text (generate-prometheus-text)
+          labels-str (apply str (interpose "/" (map (fn [[k v]] (str k "/" v)) (assoc grouping-key :job job-name))))
+          endpoint (str pushgateway-url "/metrics/job/" labels-str)
+          response (http-post endpoint
+            :headers {"Content-Type" "text/plain"}
+            :body text
+            :timeout 5000)]
+      {:ok (< (:status response) 400)
+       :status (:status response)})
+    :on-error (fn [error]
+      {:ok false :error (str error)})))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Metric Filtering & Selection
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 이름 기반 필터링
+(defn filter-metrics-by-name [pattern]
+  "Filter metrics matching name pattern (supports *)"
+  (let [regex-pattern (str-replace pattern "*" ".*")]
+    (filter (fn [m]
+      (str-match? (:name m) regex-pattern))
+      (vals (deref global-metrics)))))
+
+; 타입 기반 필터링
+(defn filter-metrics-by-type [type]
+  "Filter metrics by type"
+  (filter (fn [m] (= (:type m) type))
+    (vals (deref global-metrics))))
+
+; 라벨 기반 필터링
+(defn filter-metrics-by-label [key value]
+  "Filter metrics by label key=value"
+  (filter (fn [m]
+    (= (get (:labels m) key) value))
+    (vals (deref global-metrics))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Scrape Configuration
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Prometheus scrape 설정 생성
+(defn generate-scrape-config [job-name endpoint &:key [interval-seconds 15] [timeout-seconds 10] [path "/metrics"]]
+  "Generate Prometheus scrape job configuration (YAML)"
+  (str "- job_name: '" job-name "'\n"
+       "  scrape_interval: " interval-seconds "s\n"
+       "  scrape_timeout: " timeout-seconds "s\n"
+       "  static_configs:\n"
+       "    - targets: ['" endpoint "']\n"
+       "  metrics_path: '" path "'\n"))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 7. Metrics Health & Diagnostics
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 메트릭 헬스 체크
+(defn check-metrics-health []
+  "Check health of metrics system"
+  (let [stats (metrics-stats)
+        memory (estimate-metrics-memory)
+        cardinality (check-cardinality)]
+    {:status "ok"
+     :metrics-count (:total-metrics stats)
+     :memory-mb (:estimated-mb memory)
+     :cardinality-usage (:usage-percentage cardinality)
+     :healthy (and
+       (< (:estimated-mb memory) 1000)
+       ((:cardinality-usage cardinality) < 80))}))
+
+; 메트릭 통계 서빙
+(defn handle-metrics-stats-request [req res]
+  "Handle /metrics/stats diagnostic request"
+  (do
+    (res.writeHead 200 {
+      "Content-Type" "application/json"
+    })
+    (res.end (to-json (metrics-stats)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 8. Prometheus Query Interface
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Instant vector 쿼리
+(defn query-instant [metric-name &:key [labels {}]]
+  "Query instant vector (current value)"
+  (let [metrics (query-metrics-by-name metric-name)
+        filtered (if (empty? labels)
+                   metrics
+                   (filter-by-labels metrics labels))]
+    (map (fn [[id m]]
+      {:metric (select-keys m [:name :labels])
+       :value [(:timestamp (last (:samples m))) (:value m)]})
+      filtered)))
+
+; Range vector 쿼리
+(defn query-range [metric-name start-time end-time step-ms &:key [labels {}]]
+  "Query range vector (time series)"
+  (let [metrics (query-metrics-by-name metric-name)
+        filtered (if (empty? labels)
+                   metrics
+                   (filter-by-labels metrics labels))]
+    (map (fn [[id m]]
+      {:metric (select-keys m [:name :labels])
+       :values (query-samples id start-time end-time)})
+      filtered)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Prometheus Exporter (Phase 155) loaded")
