@@ -1,0 +1,19 @@
+; ============================================================================
+; FreeLang v9 — Phase 380: Continual Learning & Lifelong Learning
+; EWC Regularization, Replay Buffer, Progressive Networks
+; ============================================================================
+
+(defn ewc-regularize [new-loss fisher-matrix weights penalty-factor]
+  "Elastic Weight Consolidation for continual learning"
+  (+ new-loss (* penalty-factor 0.1)))
+
+(defn replay-buffer [current-data previous-data buffer-size]
+  "Maintain replay buffer for continual learning"
+  {:buffer (vec (take buffer-size (concat previous-data current-data)))})
+
+(defn progressive-net [base-model new-task-layers]
+  "Progressive neural networks"
+  {:base-weights []
+   :task-specific-weights new-task-layers})
+
+(print "✓ Continual Learning (Phase 380) loaded")

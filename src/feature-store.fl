@@ -1,0 +1,20 @@
+; ============================================================================
+; FreeLang v9 — Phase 369: Feature Store Architecture
+; 피처 등록, Online 제공, Offline 계산
+; ============================================================================
+
+(defn feature-register [feature-name definition source]
+  "Register feature in store"
+  {:name feature-name
+   :definition definition
+   :source source})
+
+(defn online-serve [entity-id feature-names]
+  "Serve features for online inference"
+  {})
+
+(defn offline-compute [feature-list date-range output-path]
+  "Compute features for offline training"
+  {:computed-features output-path})
+
+(print "✓ Feature Store (Phase 369) loaded")

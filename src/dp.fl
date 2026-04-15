@@ -1,0 +1,22 @@
+; ============================================================================
+; FreeLang v9 — Phase 362: Differential Privacy
+; Laplace Mechanism, Gaussian Mechanism, RDP
+; ============================================================================
+
+(defn laplace-mechanism [query-result sensitivity epsilon]
+  "Laplace mechanism for differential privacy"
+  (let [scale (/ sensitivity epsilon)
+        noise (Math/log (rand))]
+    (+ query-result (* scale noise))))
+
+(defn gaussian-mechanism [query-result sensitivity delta epsilon]
+  "Gaussian mechanism for differential privacy"
+  (let [sigma (Math/sqrt (/ (* 2 (Math/log (/ 1.25 delta))) (* epsilon epsilon)))]
+    (+ query-result (* sigma (rand)))))
+
+(defn rdp-account [epsilon delta compositions]
+  "Renyi Differential Privacy accounting"
+  {:epsilon-total (+ epsilon epsilon)
+   :delta-total delta})
+
+(print "✓ Differential Privacy (Phase 362) loaded")

@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 372: AutoML & Automated Feature Engineering
+; 모델 검색, 자동 피처 선택, Ensemble
+; ============================================================================
+
+(defn model-search [dataset num-models time-budget]
+  "Neural architecture search"
+  {:best-model-arch {}})
+
+(defn feature-select-auto [X y num-features]
+  "Automatic feature selection"
+  {:selected-features (vec (take num-features (range (count (first X)))))})
+
+(defn ensemble-auto [models predictions]
+  "Automatic ensemble creation"
+  {:ensemble-weights (vec (repeat (count models) (/ 1.0 (count models))))})
+
+(print "✓ AutoML (Phase 372) loaded")

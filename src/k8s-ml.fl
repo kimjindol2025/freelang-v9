@@ -1,0 +1,19 @@
+; ============================================================================
+; FreeLang v9 — Phase 374: Kubernetes for ML Training
+; Job 제출, 리소스 할당, GPU 스케줄링
+; ============================================================================
+
+(defn job-submit [job-config namespace]
+  "Submit training job to Kubernetes"
+  {:job-name (str "job-" (rand-int 10000))
+   :status "pending"})
+
+(defn resource-quota [num-cpus num-gpus memory-gb]
+  "Set resource quotas for training"
+  {:cpus num-cpus :gpus num-gpus :memory memory-gb})
+
+(defn gpu-schedule [num-gpus node-selector]
+  "Schedule GPU nodes for training"
+  {:scheduled-gpus num-gpus})
+
+(print "✓ Kubernetes ML (Phase 374) loaded")

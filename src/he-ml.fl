@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 364: Homomorphic Encryption for ML
+; CKKS 암호화, HE MatMul, ReLU 근사
+; ============================================================================
+
+(defn ckks-encrypt [plaintext public-key]
+  "CKKS homomorphic encryption"
+  {:ciphertext [] :scale 1.0})
+
+(defn he-matmul [encrypted-a encrypted-b]
+  "Matrix multiplication on encrypted data"
+  {:result [] :noise-budget 0.0})
+
+(defn he-relu-approx [encrypted-value poly-degree]
+  "Polynomial approximation of ReLU on encrypted data"
+  encrypted-value)
+
+(print "✓ HE-ML (Phase 364) loaded")

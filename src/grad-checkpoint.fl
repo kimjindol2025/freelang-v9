@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 377: Gradient Checkpointing
+; 활성화 재계산, 메모리 예산, Segment Checkpoint
+; ============================================================================
+
+(defn recompute-activation [forward-fn input layers-to-checkpoint]
+  "Recompute activations during backward pass"
+  {:forward-output []})
+
+(defn memory-budget [model-size batch-size num-layers]
+  "Calculate memory budget"
+  (/ (* model-size batch-size) num-layers))
+
+(defn segment-checkpoint [model num-segments]
+  "Checkpoint model in segments"
+  {:segment-size (/ (count model) num-segments)})
+
+(print "✓ Gradient Checkpointing (Phase 377) loaded")

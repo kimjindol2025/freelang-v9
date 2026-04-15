@@ -1,0 +1,21 @@
+; ============================================================================
+; FreeLang v9 — Phase 366: Model Versioning & Deployment
+; 버전 등록, 롤백, 카나리 배포
+; ============================================================================
+
+(defn version-register [model version metadata]
+  "Register model version"
+  {:version version
+   :timestamp (System/currentTimeMillis)
+   :metadata metadata})
+
+(defn rollback [current-version previous-version]
+  "Rollback to previous model version"
+  {:rolled-back-to previous-version})
+
+(defn canary-deploy [new-version baseline-version traffic-percentage]
+  "Canary deployment strategy"
+  {:deployed-version new-version
+   :traffic-split traffic-percentage})
+
+(print "✓ Model Versioning (Phase 366) loaded")

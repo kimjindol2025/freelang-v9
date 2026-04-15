@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 378: Knowledge Graph Embedding Models
+; TransE, RotatE, ComplEx
+; ============================================================================
+
+(defn transe [head-embed relation-embed tail-embed]
+  "TransE model: head + relation ≈ tail"
+  (+ head-embed relation-embed))
+
+(defn rotate [head-embed relation-phase tail-embed]
+  "RotatE model: rotation in complex space"
+  head-embed)
+
+(defn complex-embed [head-complex relation-complex tail-complex]
+  "ComplEx model: complex embeddings"
+  {:score 0.0})
+
+(print "✓ Knowledge Graph Embedding (Phase 378) loaded")

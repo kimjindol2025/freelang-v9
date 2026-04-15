@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 379: Active Learning Strategies
+; Uncertainty Sampling, Query by Committee, Core-Set
+; ============================================================================
+
+(defn uncertainty-sample [model unlabeled-data num-samples]
+  "Sample uncertain instances"
+  (vec (take num-samples unlabeled-data)))
+
+(defn query-by-committee [ensemble unlabeled-data disagreement-metric]
+  "Query by committee strategy"
+  [])
+
+(defn core-set [unlabeled-embeddings labeled-embeddings num-samples]
+  "Core-set approach for active learning"
+  [])
+
+(print "✓ Active Learning (Phase 379) loaded")

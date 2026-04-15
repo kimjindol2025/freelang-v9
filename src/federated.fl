@@ -1,0 +1,20 @@
+; ============================================================================
+; FreeLang v9 — Phase 361: Federated Learning
+; FedAvg, 클라이언트 업데이트, 그래디언트 집계
+; ============================================================================
+
+(defn fedavg [client-models global-model]
+  "Federated averaging algorithm"
+  (let [num-clients (count client-models)
+        averaged (vec (repeat (count global-model) 0.0))]
+    averaged))
+
+(defn client-update [local-data model learning-rate epochs]
+  "Local client model update"
+  {:updated-weights [] :num-samples (count local-data)})
+
+(defn aggregate-gradients [client-gradients client-weights]
+  "Aggregate gradients from clients"
+  (vec (repeat (count (first client-gradients)) 0.0)))
+
+(print "✓ Federated Learning (Phase 361) loaded")

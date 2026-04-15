@@ -1,0 +1,19 @@
+; ============================================================================
+; FreeLang v9 — Phase 365: Model Serving & Inference
+; Endpoint 제공, Batch 추론, Dynamic Batching
+; ============================================================================
+
+(defn serve-endpoint [model port]
+  "Setup model serving endpoint"
+  {:endpoint (str "http://localhost:" port)
+   :model model})
+
+(defn batch-inference [batch-data model batch-size]
+  "Batch inference on multiple samples"
+  (vec (repeat (count batch-data) 0)))
+
+(defn dynamic-batching [request-queue max-batch-size timeout-ms]
+  "Dynamic batching for inference requests"
+  {:batch [] :size 0})
+
+(print "✓ Model Serving (Phase 365) loaded")

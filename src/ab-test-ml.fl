@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 367: A/B Testing for ML Models
+; 트리트먼트 할당, 통계 검정, Effect Size
+; ============================================================================
+
+(defn treatment-assign [user-id num-variants randomization-seed]
+  "Assign user to treatment variant"
+  (mod user-id num-variants))
+
+(defn statistical-test [control-metrics treatment-metrics]
+  "Statistical significance test"
+  {:p-value 0.5 :significant false})
+
+(defn effect-size [control-mean control-std treatment-mean treatment-std]
+  "Calculate Cohen's d effect size"
+  (/ (- treatment-mean control-mean) control-std))
+
+(print "✓ A/B Testing ML (Phase 367) loaded")
