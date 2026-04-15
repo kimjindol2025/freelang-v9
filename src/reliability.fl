@@ -1,0 +1,275 @@
+; ============================================================================
+; FreeLang v9 — Phase 151: Reliability Layer
+; Circuit Breaker + Exponential Backoff with Jitter + Fallback Strategy
+; ============================================================================
+
+; 상태 상수
+(def CIRCUIT_CLOSED  :closed)
+(def CIRCUIT_OPEN    :open)
+(def CIRCUIT_HALF_OPEN :half-open)
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Circuit Breaker
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Circuit Breaker 인스턴스 생성
+; state: :closed | :open | :half-open
+; fail-count: 연속 실패 횟수
+; success-threshold: HALF_OPEN에서 성공 필요 횟수
+; failure-threshold: CLOSED에서 OPEN으로 전환되는 실패 횟수
+(defn create-circuit-breaker [
+  &:key
+  [failure-threshold 5]
+  [success-threshold 2]
+  [timeout-ms 60000]]
+
+  {:id (str "cb_" (random) "_" (now))
+   :state CIRCUIT_CLOSED
+   :fail-count 0
+   :success-count 0
+   :failure-threshold failure-threshold
+   :success-threshold success-threshold
+   :timeout-ms timeout-ms
+   :last-failure-time nil
+   :last-success-time (now)})
+
+; Circuit Breaker 상태 조회
+(defn get-circuit-state [breaker]
+  (:state breaker))
+
+; Circuit Breaker 재설정
+(defn reset-circuit [breaker]
+  (assoc breaker
+    :state CIRCUIT_CLOSED
+    :fail-count 0
+    :success-count 0
+    :last-failure-time nil))
+
+; Circuit Breaker 상태 전환 로직
+(defn update-circuit-state [breaker success?]
+  (let [now (now)
+        state (:state breaker)
+        timeout-ms (:timeout-ms breaker)]
+
+    (cond
+      ; CLOSED → 일반 상태
+      (= state CIRCUIT_CLOSED)
+      (if success?
+        (assoc breaker
+          :fail-count 0
+          :last-success-time now)
+        (let [new-fail-count (inc (:fail-count breaker))]
+          (if (>= new-fail-count (:failure-threshold breaker))
+            (assoc breaker
+              :state CIRCUIT_OPEN
+              :fail-count new-fail-count
+              :last-failure-time now)
+            (assoc breaker
+              :fail-count new-fail-count
+              :last-failure-time now))))
+
+      ; OPEN → 타임아웃 확인 후 HALF_OPEN으로 전환
+      (= state CIRCUIT_OPEN)
+      (let [time-since-failure (- now (:last-failure-time breaker))]
+        (if (>= time-since-failure timeout-ms)
+          (assoc breaker
+            :state CIRCUIT_HALF_OPEN
+            :success-count 0
+            :fail-count 0)
+          breaker))
+
+      ; HALF_OPEN → 성공/실패 기반 전환
+      (= state CIRCUIT_HALF_OPEN)
+      (if success?
+        (let [new-success-count (inc (:success-count breaker))]
+          (if (>= new-success-count (:success-threshold breaker))
+            (assoc breaker
+              :state CIRCUIT_CLOSED
+              :fail-count 0
+              :success-count 0
+              :last-success-time now)
+            (assoc breaker
+              :success-count new-success-count)))
+        (assoc breaker
+          :state CIRCUIT_OPEN
+          :fail-count (inc (:fail-count breaker))
+          :last-failure-time now)))))
+
+; Circuit Breaker로 함수 호출
+(defn call-with-breaker [breaker fn & args]
+  (let [state (:state breaker)]
+    (cond
+      ; CLOSED: 정상 호출
+      (= state CIRCUIT_CLOSED)
+      (fl-try
+        (let [result (apply fn args)
+              updated-breaker (update-circuit-state breaker true)]
+          {:ok true :result result :breaker updated-breaker})
+        :on-error (fn [error]
+          {:ok false
+           :error error
+           :breaker (update-circuit-state breaker false)}))
+
+      ; OPEN: 빠른 실패 (fail-fast)
+      (= state CIRCUIT_OPEN)
+      {:ok false
+       :error "Circuit breaker is OPEN"
+       :breaker breaker}
+
+      ; HALF_OPEN: 테스트 호출 (1개만 허용)
+      (= state CIRCUIT_HALF_OPEN)
+      (fl-try
+        (let [result (apply fn args)
+              updated-breaker (update-circuit-state breaker true)]
+          {:ok true :result result :breaker updated-breaker})
+        :on-error (fn [error]
+          {:ok false
+           :error error
+           :breaker (update-circuit-state breaker false)})))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Exponential Backoff with Jitter
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 단일 backoff 계산
+; attempt: 현재 재시도 횟수 (0부터 시작)
+; base: 기본 대기 시간 (ms)
+; max-delay: 최대 대기 시간 (ms)
+; jitter-range: jitter 범위 (0.0~1.0)
+(defn calculate-backoff [
+  attempt
+  &:key
+  [base 100]
+  [max-delay 30000]
+  [jitter-range 0.1]]
+
+  (let [exponential (min (* base (pow 2 attempt)) max-delay)
+        jitter-ms (* exponential jitter-range (rand))
+        total (+ exponential jitter-ms)]
+    (min total max-delay)))
+
+; 재시도 시퀀스 생성
+(defn backoff-sequence [
+  &:key
+  [base 100]
+  [max-delay 30000]
+  [max-attempts 5]
+  [jitter-range 0.1]]
+
+  (map (fn [attempt]
+    (calculate-backoff attempt
+      :base base
+      :max-delay max-delay
+      :jitter-range jitter-range))
+    (range 0 max-attempts)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Retry with Backoff
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 재시도 전략
+; fn: 호출할 함수
+; max-attempts: 최대 재시도 횟수
+; base-delay: 기본 대기 시간
+; max-delay: 최대 대기 시간
+(defn retry-with-backoff [
+  fn
+  &:key
+  [max-attempts 5]
+  [base-delay 100]
+  [max-delay 30000]
+  [jitter-range 0.1]]
+
+  (defn attempt [attempt-num]
+    (fl-try
+      (fn)
+      :on-error (fn [error]
+        (if (>= attempt-num max-attempts)
+          (throw error)
+          (let [delay (calculate-backoff attempt-num
+                       :base base-delay
+                       :max-delay max-delay
+                       :jitter-range jitter-range)]
+            (do
+              (sleep delay)
+              (attempt (inc attempt-num))))))))
+
+  (attempt 0))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Fallback Strategy
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Primary 함수 실패 시 Fallback 실행
+(defn with-fallback [primary-fn fallback-fn]
+  (fl-try
+    (primary-fn)
+    :on-error (fn [error]
+      (try
+        (fallback-fn)
+        (catch Exception e
+          (throw error))))))
+
+; Multiple fallback 체인
+; fns: 우선순위 함수 리스트 [primary fallback1 fallback2 ...]
+(defn chain-fallbacks [fns]
+  (if (empty? fns)
+    (throw "All fallback functions failed")
+    (fl-try
+      ((first fns))
+      :on-error (fn [error]
+        (chain-fallbacks (rest fns))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. 통합: Circuit Breaker + Retry + Fallback
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 상태를 유지하는 재시도 래퍼
+(defn call-with-reliability [
+  breaker
+  fn
+  &:key
+  [max-attempts 3]
+  [base-delay 100]
+  [max-delay 5000]
+  [fallback-fn nil]]
+
+  (let [breaker-result (call-with-breaker breaker fn)]
+    (if (:ok breaker-result)
+      {:ok true
+       :result (:result breaker-result)
+       :breaker (:breaker breaker-result)}
+      (if fallback-fn
+        {:ok true
+         :result (fallback-fn)
+         :breaker (:breaker breaker-result)}
+        {:ok false
+         :error (:error breaker-result)
+         :breaker (:breaker breaker-result)}))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Utility Functions
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Circuit Breaker 메트릭 조회
+(defn get-breaker-metrics [breaker]
+  {:id (:id breaker)
+   :state (:state breaker)
+   :fail-count (:fail-count breaker)
+   :success-count (:success-count breaker)
+   :is-healthy (= (:state breaker) CIRCUIT_CLOSED)
+   :last-failure-time (:last-failure-time breaker)
+   :last-success-time (:last-success-time breaker)})
+
+; 여러 Circuit Breaker 관리
+(defn create-breaker-pool [names config]
+  (reduce (fn [pool name]
+    (assoc pool name (create-circuit-breaker config)))
+    {}
+    names))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Reliability Layer (Phase 151) loaded")
