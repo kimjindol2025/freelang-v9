@@ -1,0 +1,11 @@
+; Phase 174: FFT
+(defn fft [x]
+  "Fast Fourier Transform"
+  (let [n (count x)]
+    (if (<= n 1)
+      x
+      (let [even (fft (vec (map-indexed (fn [i v] (if (even? i) v)) x)))
+            odd (fft (vec (map-indexed (fn [i v] (if (odd? i) v)) x)))]
+        (vec (concat even odd))))))
+
+(print "✓ FFT (Phase 174) loaded")

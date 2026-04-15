@@ -1,0 +1,26 @@
+; Phase 193: Cache Optimization
+(defn lru-cache [capacity]
+  "LRU cache"
+  {:type :lru
+   :capacity capacity
+   :data (atom {})
+   :order (atom [])})
+
+(defn cache-get [cache key]
+  "Get from cache"
+  (if (contains? @(:data cache) key)
+    (do
+      (swap! (:order cache) (fn [o] (vec (conj (remove (fn [x] (= x key)) o) key))))
+      (get @(:data cache) key))
+    nil))
+
+(defn cache-put [cache key value]
+  "Put into cache"
+  (if (>= (count @(:data cache)) (:capacity cache))
+    (let [oldest (first @(:order cache))]
+      (swap! (:data cache) dissoc oldest)
+      (swap! (:order cache) rest)))
+  (swap! (:data cache) assoc key value)
+  (swap! (:order cache) conj key))
+
+(print "✓ Cache Optimization (Phase 193) loaded")

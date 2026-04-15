@@ -1,0 +1,21 @@
+; Phase 178: Game Theory
+(defn nim-game [piles]
+  "Nim game - XOR of all piles"
+  (reduce bit-xor piles))
+
+(defn grundy-number [state transitions]
+  "Calculate Grundy number"
+  (let [next-states (transitions state)
+        memo (atom {})]
+    (letfn [(calc [s]
+              (if (contains? @memo s)
+                (get @memo s)
+                (let [reachable (set (map calc (transitions s)))
+                      mex (atom 0)]
+                  (while (contains? reachable @mex)
+                    (swap! mex inc))
+                  (swap! memo assoc s @mex)
+                  @mex))]
+      (calc state))))
+
+(print "✓ Game Theory (Phase 178) loaded")

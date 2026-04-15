@@ -1,0 +1,20 @@
+; Phase 183: Decision Trees
+(defn entropy [labels]
+  "Shannon entropy"
+  (let [counts (frequencies labels)
+        total (count labels)]
+    (- (reduce + (map (fn [[label count]]
+      (let [p (/ count total)]
+        (* p (Math/log p))))
+    counts)))))
+
+(defn info-gain [parent left right]
+  "Information gain from split"
+  (let [total (+ (count left) (count right))
+        left-weight (/ (count left) total)
+        right-weight (/ (count right) total)]
+    (- (entropy parent)
+       (+ (* left-weight (entropy left))
+          (* right-weight (entropy right))))))
+
+(print "✓ Decision Trees (Phase 183) loaded")

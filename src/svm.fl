@@ -1,0 +1,13 @@
+; Phase 187: SVM
+(defn kernel-rbf [x1 x2 &:key [gamma 0.1]]
+  "RBF kernel"
+  (let [diff (map - x1 x2)
+        dist-sq (reduce + (map (fn [d] (* d d)) diff))]
+    (Math/exp (* (- gamma) dist-sq))))
+
+(defn svm-margin [x w b y]
+  "SVM margin calculation"
+  (let [pred (+ (reduce + (map * x w)) b)]
+    (* y pred)))
+
+(print "✓ SVM (Phase 187) loaded")

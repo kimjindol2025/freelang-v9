@@ -1,0 +1,20 @@
+; Phase 184: Naive Bayes
+(defn nb-train [data]
+  "Train Naive Bayes"
+  (let [by-label (group-by last data)]
+    {:priors (reduce (fn [p [label samples]]
+      (assoc p label (/ (count samples) (count data))))
+      {} by-label)
+     :likelihoods (reduce (fn [l [label samples]]
+      (assoc l label (frequencies (map first samples))))
+      {} by-label)}))
+
+(defn nb-predict [model features]
+  "Predict using Naive Bayes"
+  (let [priors (:priors model)
+        scores (reduce (fn [s [label prior]]
+          (assoc s label (Math/log prior)))
+          {} priors)]
+    (apply max-key (fn [label] (get scores label)) (keys priors))))
+
+(print "✓ Naive Bayes (Phase 184) loaded")

@@ -1,0 +1,18 @@
+; Phase 194: JIT Compilation
+(defn inline-function [func call-site]
+  "Inline function at call site"
+  (assoc call-site :inlined true :body (:body func)))
+
+(defn constant-fold [expr]
+  "Constant folding optimization"
+  (if (and (= (:op expr) '+) (number? (:left expr)) (number? (:right expr)))
+    {:op :const :value (+ (:left expr) (:right expr))}
+    expr))
+
+(defn dead-code-elimination [code]
+  "Remove dead code"
+  (filter (fn [stmt]
+    (not (and (contains? stmt :dead) (:dead stmt))))
+  code))
+
+(print "✓ JIT Compilation (Phase 194) loaded")

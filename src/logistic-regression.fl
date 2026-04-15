@@ -1,0 +1,17 @@
+; Phase 186: Logistic Regression
+(defn sigmoid [x]
+  "Sigmoid activation"
+  (/ 1 (+ 1 (Math/exp (- x)))))
+
+(defn log-loss [y y-pred]
+  "Binary cross-entropy loss"
+  (- (reduce + (map (fn [i]
+    (+ (* (nth y i) (Math/log (nth y-pred i)))
+       (* (- 1 (nth y i)) (Math/log (- 1 (nth y-pred i))))))
+  (range (count y)))) (count y)))
+
+(defn lr-predict [x weights]
+  "Logistic regression prediction"
+  (sigmoid (reduce + (map * x weights))))
+
+(print "✓ Logistic Regression (Phase 186) loaded")

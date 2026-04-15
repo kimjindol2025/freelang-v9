@@ -1,0 +1,22 @@
+; Phase 173: Geometry
+(defn cross-product [o a b]
+  "Cross product of vectors OA and OB"
+  (- (* (- (first a) (first o)) (- (second b) (second o)))
+     (* (- (second a) (second o)) (- (first b) (first o)))))
+
+(defn graham-scan [points]
+  "Convex hull using Graham Scan"
+  (let [sorted (sort-by (fn [p] [(first p) (second p)]) points)
+        stack (atom [])]
+    (doseq [p sorted]
+      (while (>= (count @stack) 2)
+        (let [o (nth @stack (- (count @stack) 2))
+              a (nth @stack (- (count @stack) 1))
+              cp (cross-product o a p)]
+          (if (<= cp 0)
+            (swap! stack pop)
+            (break)))))
+      (swap! stack conj p))
+    @stack))
+
+(print "✓ Geometry (Phase 173) loaded")

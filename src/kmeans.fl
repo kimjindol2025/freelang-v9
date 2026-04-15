@@ -1,0 +1,23 @@
+; Phase 181: K-Means Clustering
+(defn euclidean-dist [p1 p2]
+  "Euclidean distance"
+  (Math/sqrt (reduce + (map (fn [i] (let [d (- (nth p1 i) (nth p2 i))] (* d d))) (range (count p1))))))
+
+(defn kmeans [data k &:key [iterations 10]]
+  "K-means clustering"
+  (let [centroids (atom (vec (take k (shuffle data))))]
+    (dotimes [_ iterations]
+      (let [clusters (atom (vec (repeat k [])))]
+        (doseq [point data]
+          (let [nearest (apply min-key (fn [i] (euclidean-dist point (nth @centroids i))) (range k))]
+            (swap! clusters assoc nearest (conj (nth @clusters nearest) point))))
+        (doseq [i (range k)]
+          (let [cluster (nth @clusters i)]
+            (if (not (empty? cluster))
+              (let [centroid (vec (map (fn [j]
+                (/ (reduce + (map (fn [p] (nth p j)) cluster)) (count cluster)))
+              (range (count (first cluster)))))]
+                (swap! centroids assoc i centroid)))))))
+    @centroids))
+
+(print "✓ K-Means (Phase 181) loaded")

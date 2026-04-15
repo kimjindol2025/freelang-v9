@@ -1,0 +1,22 @@
+; Phase 188: Neural Networks
+(defn relu [x]
+  "ReLU activation"
+  (max 0 x))
+
+(defn relu-derivative [x]
+  "ReLU derivative"
+  (if (> x 0) 1 0))
+
+(defn forward-pass [input weights]
+  "Neural network forward pass"
+  (vec (map (fn [row]
+    (relu (reduce + (map * input row))))
+  weights)))
+
+(defn softmax [logits]
+  "Softmax"
+  (let [exp-vals (map (fn [x] (Math/exp x)) logits)
+        sum (reduce + exp-vals)]
+    (map (fn [x] (/ x sum)) exp-vals)))
+
+(print "✓ Neural Networks (Phase 188) loaded")

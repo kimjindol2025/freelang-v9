@@ -1,0 +1,21 @@
+; Phase 190: Feature Engineering
+(defn normalize [data]
+  "Min-max normalization"
+  (let [min-val (apply min data)
+        max-val (apply max data)
+        range (- max-val min-val)]
+    (map (fn [x] (/ (- x min-val) range)) data)))
+
+(defn standardize [data]
+  "Standardization (z-score)"
+  (let [mean (/ (reduce + data) (count data))
+        std (Math/sqrt (/ (reduce + (map (fn [x] (* (- x mean) (- x mean))) data)) (count data)))]
+    (map (fn [x] (/ (- x mean) std)) data)))
+
+(defn one-hot-encode [categories values]
+  "One-hot encoding"
+  (map (fn [v]
+    (vec (map (fn [cat] (if (= v cat) 1 0)) categories)))
+  values))
+
+(print "✓ Feature Engineering (Phase 190) loaded")

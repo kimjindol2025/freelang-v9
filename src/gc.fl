@@ -1,0 +1,17 @@
+; Phase 192: Garbage Collection
+(defn gc-mark [root visited]
+  "Mark phase of GC"
+  (swap! visited conj root)
+  (doseq [ref (get-refs root)]
+    (if (not (contains? @visited ref))
+      (gc-mark ref visited))))
+
+(defn gc-sweep [heap marked]
+  "Sweep phase of GC"
+  (filter (fn [obj] (contains? @marked obj)) heap))
+
+(defn get-refs [obj]
+  "Get references from object"
+  (if (vector? obj) (filter map? obj) []))
+
+(print "✓ Garbage Collection (Phase 192) loaded")

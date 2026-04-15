@@ -1,0 +1,16 @@
+; Phase 185: Linear Regression
+(defn fit-ols [x y]
+  "Ordinary least squares"
+  (let [x-mean (/ (reduce + x) (count x))
+        y-mean (/ (reduce + y) (count y))
+        numerator (reduce + (map (fn [i] (* (- (nth x i) x-mean) (- (nth y i) y-mean))) (range (count x))))
+        denominator (reduce + (map (fn [i] (* (- (nth x i) x-mean) (- (nth x i) x-mean))) (range (count x))))]
+    {:slope (/ numerator denominator) :intercept (- y-mean (* (/ numerator denominator) x-mean))}))
+
+(defn r-squared [y y-pred]
+  "R² score"
+  (let [ss-res (reduce + (map (fn [i] (let [diff (- (nth y i) (nth y-pred i))] (* diff diff))) (range (count y))))
+        ss-tot (reduce + (map (fn [i] (let [mean (/ (reduce + y) (count y)) diff (- (nth y i) mean)] (* diff diff))) (range (count y))))]
+    (- 1 (/ ss-res ss-tot))))
+
+(print "✓ Linear Regression (Phase 185) loaded")

@@ -1,0 +1,23 @@
+; Phase 199: Performance Testing
+(defn load-test [f duration &:key [rps 100]]
+  "Load test function"
+  (let [start (System/currentTimeMillis)
+        count (atom 0)
+        failures (atom 0)]
+    (loop []
+      (if (< (- (System/currentTimeMillis) start) duration)
+        (do
+          (try
+            (do (f) (swap! count inc))
+            (catch Exception _ (swap! failures inc)))
+          (recur))))
+    {:total @count :failures @failures :rps (/ @count (/ duration 1000))}))
+
+(defn throughput [f iterations]
+  "Measure throughput"
+  (let [start (System/nanoTime)]
+    (dotimes [_ iterations] (f))
+    (let [elapsed (- (System/nanoTime) start)]
+      (/ iterations (/ elapsed 1e9)))))
+
+(print "✓ Performance Testing (Phase 199) loaded")

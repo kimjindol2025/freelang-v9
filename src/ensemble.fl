@@ -1,0 +1,18 @@
+; Phase 189: Ensemble Methods
+(defn bootstrap-sample [data &:key [size nil]]
+  "Bootstrap sampling"
+  (let [n (or size (count data))]
+    (vec (repeatedly n (fn [] (nth data (rand-int (count data))))))))
+
+(defn bagging-predict [models features]
+  "Bagging ensemble prediction"
+  (let [predictions (map (fn [model] (model features)) models)]
+    (apply max-key (fn [p] (count (filter (fn [x] (= x p)) predictions))) predictions)))
+
+(defn adaboost-weight [misclassified weights]
+  "AdaBoost weight update"
+  (let [error (/ (reduce + (map-indexed (fn [i w] (if (nth misclassified i) w 0)) weights))
+                 (reduce + weights))]
+    (Math/log (/ 1 error))))
+
+(print "✓ Ensemble Methods (Phase 189) loaded")

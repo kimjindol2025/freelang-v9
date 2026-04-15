@@ -1,0 +1,13 @@
+; Phase 182: KNN Classifier
+(defn knn-predict [train-data query k]
+  "KNN prediction"
+  (let [distances (map (fn [point]
+    [(euclidean-dist query (vec (drop-last point))) (last point)])
+    train-data)
+        sorted (sort-by first distances)
+        nearest (take k sorted)
+        labels (map second nearest)
+        counts (frequencies labels)]
+    (apply max-key (fn [label] (get counts label 0)) (keys counts))))
+
+(print "✓ KNN (Phase 182) loaded")

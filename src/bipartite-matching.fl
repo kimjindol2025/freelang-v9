@@ -1,0 +1,76 @@
+; ============================================================================
+; FreeLang v9 — Phase 171: Bipartite Matching & Max Flow
+; ============================================================================
+
+; 이분 그래프 최대 매칭 (Hungarian)
+(defn bipartite-match [graph u-count v-count]
+  "Find maximum bipartite matching"
+  (let [match (atom {})
+        visited (atom #{})]
+    (letfn [(dfs [u]
+              (doseq [v (get graph u [])]
+                (if (not (contains? @visited v))
+                  (do
+                    (swap! visited conj v)
+                    (if (or (not (contains? @match v))
+                            (dfs (get @match v)))
+                      (do
+                        (swap! match assoc v u)
+                        (swap! match assoc u v)))))))]
+      (doseq [u (range u-count)]
+        (reset! visited #{})
+        (dfs u))
+      @match)))
+
+; Ford-Fulkerson 최대 유량
+(defn max-flow [graph source sink]
+  "Find maximum flow using Ford-Fulkerson"
+  (let [flow (atom {})
+        total-flow (atom 0)]
+    (letfn [(bfs-augment []
+              (let [parent (atom {sink nil})
+                    queue (atom [sink])]
+                (loop []
+                  (if (empty? @queue)
+                    @parent
+                    (let [v (first @queue)]
+                      (if (= v source)
+                        @parent
+                        (do
+                          (swap! queue rest)
+                          (recur))))))))
+            (find-path []
+              (let [parent (atom {})]
+                (letfn [(dfs [u path]
+                  (if (= u sink)
+                    path
+                    (let [neighbors (or (get graph u) [])]
+                      (loop [n neighbors]
+                        (if (empty? n)
+                          nil
+                          (let [v (first n)]
+                            (if (and (not (contains? @parent v))
+                                     (> (get-in graph [u v] 0) (get @flow [u v] 0)))
+                              (do
+                                (swap! parent assoc v u)
+                                (dfs v (conj path v)))
+                              (recur (rest n))))))))]
+                  (dfs source [source])))]
+        (find-path)))]
+      (loop []
+        (let [path (find-path)]
+          (if (nil? path)
+            @total-flow
+            (do
+              (let [min-cap (atom Integer/MAX_VALUE)]
+                (doseq [i (range (- (count path) 1))]
+                  (let [u (nth path i) v (nth path (inc i))]
+                    (reset! min-cap (min @min-cap (- (get-in graph [u v] 0) (get @flow [u v] 0))))))
+                (doseq [i (range (- (count path) 1))]
+                  (let [u (nth path i) v (nth path (inc i))]
+                    (swap! flow assoc [u v] (+ (get @flow [u v] 0) @min-cap))
+                    (swap! flow assoc [v u] (- (get @flow [v u] 0) @min-cap))))
+                (swap! total-flow (fn [x] (+ x @min-cap))))
+              (recur)))))))
+
+(print "✓ Bipartite Matching & Max Flow (Phase 171) loaded")

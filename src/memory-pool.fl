@@ -1,0 +1,28 @@
+; Phase 191: Memory Pooling
+(defn create-pool [block-size num-blocks]
+  "Create memory pool"
+  {:type :pool
+   :block-size block-size
+   :blocks (atom (vec (repeat num-blocks true)))
+   :data (atom (vec (repeat num-blocks nil)))
+   :free-count (atom num-blocks)})
+
+(defn pool-alloc [pool]
+  "Allocate from pool"
+  (let [blocks (:blocks pool)]
+    (loop [i 0]
+      (if (< i (count @blocks))
+        (if (nth @blocks i)
+          (do
+            (swap! blocks assoc i false)
+            (swap! (:free-count pool) dec)
+            i)
+          (recur (inc i)))
+        -1))))
+
+(defn pool-free [pool idx]
+  "Free pool block"
+  (swap! (:blocks pool) assoc idx true)
+  (swap! (:free-count pool) inc))
+
+(print "✓ Memory Pooling (Phase 191) loaded")

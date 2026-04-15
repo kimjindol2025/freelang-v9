@@ -1,0 +1,30 @@
+; Phase 172: Linear Algebra
+(defn matrix-mul [a b]
+  "Matrix multiplication"
+  (let [n (count a) m (count (first b))]
+    (vec (map (fn [i]
+      (vec (map (fn [j]
+        (reduce + (map * (nth a i) (map (fn [k] (nth (nth b k) j)) (range (count b))))))
+      (range m))))
+    (range n)))))
+
+(defn gauss-elim [matrix]
+  "Gaussian elimination"
+  (let [m (atom (vec (map vec matrix)))]
+    (doseq [col (range (count @m))]
+      (let [pivot (atom col)]
+        (doseq [row (range (inc col) (count @m))]
+          (if (> (Math/abs (nth (nth @m row) col)) (Math/abs (nth (nth @m @pivot) col)))
+            (reset! pivot row)))
+        (when (not (= @pivot col))
+          (swap! m (fn [x] (let [tmp (nth x col)]
+            (assoc x col (nth x @pivot) @pivot tmp)))))
+        (doseq [row (range (inc col) (count @m))]
+          (let [factor (/ (nth (nth @m row) col) (nth (nth @m col) col))]
+            (swap! m (fn [x]
+              (assoc x row (vec (map (fn [j]
+                (- (nth (nth x row) j) (* factor (nth (nth x col) j))))
+              (range (count (first x)))))))))))
+    @m))
+
+(print "✓ Linear Algebra (Phase 172) loaded")

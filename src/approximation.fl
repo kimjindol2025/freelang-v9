@@ -1,0 +1,16 @@
+; Phase 179: Approximation Algorithms
+(defn greedy-vertex-cover [edges vertices]
+  "Greedy approximation for vertex cover"
+  (let [cover (atom #{})
+        remaining (atom (set edges))]
+    (while (not (empty? @remaining))
+      (let [degrees (frequencies (flatten (vec @remaining)))
+            max-vertex (apply max-key (fn [v] (get degrees v 0)) (keys degrees))]
+        (swap! cover conj max-vertex)
+        (swap! remaining (fn [e]
+          (set (filter (fn [edge]
+            (not (or (= (first edge) max-vertex) (= (second edge) max-vertex))))
+          e))))))
+    @cover))
+
+(print "✓ Approximation Algorithms (Phase 179) loaded")

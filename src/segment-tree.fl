@@ -1,0 +1,17 @@
+; Phase 175: Segment Tree
+(defn build-segment-tree [arr]
+  "Build segment tree for range queries"
+  (let [n (count arr)
+        tree (atom (vec (repeat (* 4 n) 0)))]
+    (letfn [(build [node start end]
+              (if (= start end)
+                (swap! tree assoc node (nth arr start))
+                (let [mid (quot (+ start end) 2)]
+                  (build (+ (* 2 node) 1) start mid)
+                  (build (+ (* 2 node) 2) (+ mid 1) end)
+                  (swap! tree assoc node (+ (nth @tree (+ (* 2 node) 1))
+                                           (nth @tree (+ (* 2 node) 2)))))))]
+      (build 0 0 (- n 1)))
+    @tree))
+
+(print "✓ Segment Tree (Phase 175) loaded")

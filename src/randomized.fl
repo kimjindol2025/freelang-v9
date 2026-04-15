@@ -1,0 +1,24 @@
+; Phase 177: Randomized Algorithms
+(defn random-quickselect [arr k]
+  "Find k-th smallest using randomized quickselect"
+  (if (<= (count arr) 1)
+    (first arr)
+    (let [pivot (nth arr (rand-int (count arr)))
+          left (filter (fn [x] (< x pivot)) arr)
+          right (filter (fn [x] (> x pivot)) arr)
+          mid (filter (fn [x] (= x pivot)) arr)]
+      (cond
+        (< k (count left)) (random-quickselect left k)
+        (< k (+ (count left) (count mid))) pivot
+        :else (random-quickselect right (- k (count left) (count mid)))))))
+
+(defn reservoir-sample [stream k]
+  "Reservoir sampling - select k random items from stream"
+  (let [reservoir (atom (vec (take k stream)))]
+    (doseq [i (range k (count stream))]
+      (let [j (rand-int (inc i))]
+        (if (< j k)
+          (swap! reservoir assoc j (nth stream i)))))
+    @reservoir))
+
+(print "✓ Randomized Algorithms (Phase 177) loaded")

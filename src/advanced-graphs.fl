@@ -1,0 +1,26 @@
+; Phase 180: Advanced Graphs
+(defn find-bridges [graph]
+  "Find bridges in undirected graph using Tarjan"
+  (let [visited (atom #{})
+        disc (atom {})
+        low (atom {})
+        time (atom 0)
+        bridges (atom [])]
+    (letfn [(dfs [u parent]
+              (swap! visited conj u)
+              (swap! disc assoc u @time)
+              (swap! low assoc u @time)
+              (swap! time inc)
+              (doseq [v (get graph u [])]
+                (if (not (contains? @visited v))
+                  (do
+                    (dfs v u)
+                    (swap! low assoc u (min (get @low u) (get @low v)))
+                    (if (> (get @low v) (get @disc u))
+                      (swap! bridges conj [u v])))
+                  (if (not (= v parent))
+                    (swap! low assoc u (min (get @low u) (get @disc v)))))))]
+      (dfs 0 -1))
+    @bridges))
+
+(print "✓ Advanced Graphs (Phase 180) loaded")

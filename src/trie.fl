@@ -1,0 +1,26 @@
+; Phase 176: Trie
+(defn create-trie []
+  "Create a trie node"
+  {:children (atom {}) :is-word (atom false)})
+
+(defn trie-insert [trie word]
+  "Insert word into trie"
+  (let [node (atom trie)]
+    (doseq [ch (str word)]
+      (let [children (:children @node)]
+        (if (not (contains? @children ch))
+          (swap! children assoc ch (create-trie)))
+        (reset! node (get @children ch))))
+    (reset! (:is-word @node) true)
+    trie))
+
+(defn trie-search [trie word]
+  "Search word in trie"
+  (let [node (atom trie)]
+    (doseq [ch (str word)]
+      (if (contains? @(:children @node) ch)
+        (reset! node (get @(:children @node) ch))
+        (reset! node nil)))
+    (if (nil? @node) false @(:is-word @node))))
+
+(print "✓ Trie (Phase 176) loaded")
