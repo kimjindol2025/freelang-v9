@@ -80,6 +80,341 @@ import { globalCounterfactual, CounterfactualReasoner, Scenario } from "./counte
 import { globalPredictor } from "./predict"; // Phase 144: PREDICT
 import { FreeLangV9, freelangV9, FREELANG_V9_MANIFEST } from "./freelang-v9-complete"; // Phase 150: COMPLETE
 
+// Phase 151: WebSocket
+const WS_LIB = require('/home/kimjin/freelang-v9/node_modules/ws');
+const { WebSocketServer: _WSServer, WebSocket: _WSClient } = WS_LIB;
+const globalWebSocketServers = new Map<string, { wss: any; clients: Map<string, any>; handlers: Map<string, any>; }>();
+const globalWebSocketConnections = new Map<string, { socket: any; handlers: Map<string, any>; }>();
+let _wsServerCounter = 0;
+let _wsConnCounter   = 0;
+
+// ── FL 파서 접근 ─────────────────────────────────────────────────────────
+// fl-parse: FL 소스 문자열 → AST 배열 (셀프 호스팅용)
+import { lex as _flLex } from "./lexer";
+import { parse as _flParse } from "./parser";
+
+// ── Native FL Interpreter Helpers ─────────────────────────────────────────
+// fl-interp 네이티브 빌트인용 헬퍼. TS 스택 오버플로우 없이 FL 코드 평가.
+
+function flEnvGet(env: any, name: string): any {
+  let e = env;
+  while (e !== null && e !== undefined) {
+    const vars = e.vars;
+    if (Array.isArray(vars)) {
+      for (let i = 0; i < vars.length; i++) {
+        const pair = vars[i];
+        if (Array.isArray(pair) && pair[0] === name) return pair[1];
+      }
+    }
+    e = e.parent;
+  }
+  return null;
+}
+
+function flEnvBind(env: any, name: string, val: any): any {
+  return { vars: [[name, val], ...(env.vars || [])], parent: env.parent };
+}
+
+function flBlockItems(block: any): any[] {
+  if (!block) return [];
+  if (block.kind === "block" && block.type === "Array") {
+    if (block.fields instanceof Map) return block.fields.get("items") ?? [];
+    if (block.fields && Array.isArray(block.fields.items)) return block.fields.items;
+    return block.items ?? [];
+  }
+  if (Array.isArray(block.items)) return block.items;
+  if (Array.isArray(block)) return block;
+  return [];
+}
+
+function flGetParamNames(paramsNode: any): string[] {
+  const items = flBlockItems(paramsNode);
+  const names: string[] = [];
+  for (const p of items) {
+    if (p.kind === "literal" && p.value === "&") break;
+    if (p.kind === "variable") names.push(p.name);
+    else if (p.kind === "literal") names.push(String(p.value));
+  }
+  return names;
+}
+
+function flExecOpNative(op: string, vals: any[]): any {
+  const v0 = vals[0], v1 = vals[1], v2 = vals[2];
+  switch (op) {
+    case "+": return vals.reduce((a: number, b: number) => a + b, 0);
+    case "-": return vals.length === 1 ? -v0 : vals.reduce((a: number, b: number) => a - b);
+    case "*": return vals.reduce((a: number, b: number) => a * b, 1);
+    case "/": return vals.length === 1 ? 1 / v0 : vals.reduce((a: number, b: number) => a / b);
+    case "%": return v0 % v1;
+    case "=": return v0 === v1;
+    case "!=": return v0 !== v1;
+    case "<": return v0 < v1;
+    case ">": return v0 > v1;
+    case "<=": return v0 <= v1;
+    case ">=": return v0 >= v1;
+    case "not": return !v0;
+    case "null?": return v0 === null || v0 === undefined;
+    case "true?": return v0 === true;
+    case "false?": return v0 === false;
+    case "and": return !!(v0 && v1);
+    case "or": return !!(v0 || v1);
+    case "length": return Array.isArray(v0) ? v0.length : typeof v0 === "string" ? v0.length : 0;
+    case "get":
+      // ⚠️ Map vs plain object: 파서가 맵 리터럴을 JS Map으로 반환할 수 있음
+      // instanceof Map 체크 없으면 .get() 없다고 터짐 — 순서 바꾸지 말 것
+      if (Array.isArray(v0)) return v0[v1] !== undefined ? v0[v1] : null;
+      if (v0 instanceof Map) return v0.get(String(v1).replace(/^:/, "")) ?? null;
+      if (v0 !== null && typeof v0 === "object") {
+        const k = typeof v1 === "string" && v1.startsWith(":") ? v1.slice(1) : String(v1);
+        return v0[k] !== undefined ? v0[k] : null;
+      }
+      return null;
+    case "append": return Array.isArray(v0) && Array.isArray(v1) ? [...v0, ...v1] : Array.isArray(v0) ? [...v0, v1] : [v0, v1];
+    case "slice": return Array.isArray(v0) ? v0.slice(v1, v2) : typeof v0 === "string" ? v0.slice(v1, v2) : [];
+    case "str": case "concat": return vals.map((v: any) => v === null || v === undefined ? "null" : String(v)).join("");
+    case "str-to-num": { const n = parseFloat(String(v0)); return isNaN(n) ? null : n; }
+    case "num-to-str": return String(v0 ?? "");
+    case "replace": return typeof v0 === "string" ? v0.split(String(v1)).join(String(v2)) : v0;
+    case "type-of": return typeof v0;
+    case "print": process.stdout.write(vals.map((v: any) => v === null ? "null" : String(v)).join("")); return null;
+    case "println": console.log(...vals.map((v: any) => v === null ? "null" : String(v))); return null;
+    case "substring": return typeof v0 === "string" ? v0.slice(Number(v1), v2 !== undefined ? Number(v2) : undefined) : "";
+    case "char-at": return typeof v0 === "string" ? (v0[Number(v1)] ?? null) : null;
+    case "index-of": return typeof v0 === "string" && typeof v1 === "string" ? v0.indexOf(v1) : -1;
+    case "split": return typeof v0 === "string" ? v0.split(String(v1 ?? "")) : [];
+    case "trim": return typeof v0 === "string" ? v0.trim() : v0;
+    case "upper-case": return typeof v0 === "string" ? v0.toUpperCase() : v0;
+    case "lower-case": return typeof v0 === "string" ? v0.toLowerCase() : v0;
+    case "strlen": return typeof v0 === "string" ? v0.length : 0;
+    case "includes?": return typeof v0 === "string" ? v0.includes(String(v1)) : Array.isArray(v0) ? v0.includes(v1) : false;
+    case "starts-with?": return typeof v0 === "string" ? v0.startsWith(String(v1)) : false;
+    case "ends-with?": return typeof v0 === "string" ? v0.endsWith(String(v1)) : false;
+    case "empty?": return Array.isArray(v0) ? v0.length === 0 : typeof v0 === "string" ? v0.length === 0 : (v0 === null || v0 === undefined);
+    case "first": return Array.isArray(v0) ? (v0[0] !== undefined ? v0[0] : null) : null;
+    case "rest": return Array.isArray(v0) ? v0.slice(1) : [];
+    case "cons": return [v0, ...(Array.isArray(v1) ? v1 : [v1])];
+    case "reverse": return Array.isArray(v0) ? [...v0].reverse() : v0;
+    case "sort": return Array.isArray(v0) ? [...v0].sort((a: any, b: any) => typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b))) : v0;
+    case "keys": return v0 && typeof v0 === "object" && !Array.isArray(v0) ? Object.keys(v0) : [];
+    case "values": return v0 && typeof v0 === "object" && !Array.isArray(v0) ? Object.values(v0) : [];
+    case "floor": return Math.floor(v0);
+    case "ceil": return Math.ceil(v0);
+    case "round": return Math.round(v0);
+    case "abs": return Math.abs(v0);
+    case "max": return Math.max(...vals.filter((v: any) => typeof v === "number"));
+    case "min": return Math.min(...vals.filter((v: any) => typeof v === "number"));
+    case "pow": return Math.pow(v0, v1);
+    case "sqrt": return Math.sqrt(v0);
+    case "mod": return v0 % v1;
+    case "closure?": return v0 !== null && v0 !== undefined && typeof v0 === "object" && v0.kind === "closure";
+    case "block-items": return flBlockItems(v0);
+    case "read-file": case "file_read": try { return require("fs").readFileSync(String(v0), "utf-8"); } catch { return null; }
+    case "write-file": case "file_write": try { require("fs").writeFileSync(String(v0), String(v1 ?? "")); return true; } catch { return false; }
+    case "file-exists?": case "file_exists": try { return require("fs").existsSync(String(v0)); } catch { return false; }
+    // ── 셀프 호스팅 native builtins (native fl-interp 내부에서 호출 가능) ──
+    case "fl-interp": return flInterpNative(v0, v1);
+    case "fl-parse": try { return _flParse(_flLex(String(v0 ?? ""))); } catch { return []; }
+    case "fl-fix-env": {
+      // ⚠️ 뮤테이션: closure-env 직접 할당 — 함수형 아님!
+      // fl-load-funcs가 클로저를 만들 때 env가 미완성이라 closure-env가 틀림.
+      // 전체 로드 후 이걸 호출해서 모든 클로저를 최종 env로 패치함 (상호재귀 지원).
+      // 이 순서 없으면 fact(5) 같은 자기재귀도 못 찾음.
+      const fenv = v0;
+      if (!fenv || !Array.isArray(fenv.vars)) return fenv;
+      for (const pair of fenv.vars) {
+        if (Array.isArray(pair) && pair[1] && typeof pair[1] === "object" && pair[1].kind === "closure")
+          pair[1]["closure-env"] = fenv;
+      }
+      return fenv;
+    }
+    case "fl-env-get": return flEnvGet(v0, String(v1 ?? ""));
+    case "fl-exec-op": return flExecOpNative(String(v0 ?? ""), Array.isArray(v1) ? v1 : []);
+    case "fl-special-op?": {
+      const sop = String(v0 ?? "");
+      const specials = ["if","let","do","begin","fn","and","or","not","null?","match","call","export","define","set!"];
+      return specials.includes(sop) ? sop : null;
+    }
+    default: return null;
+  }
+}
+
+const FL_SPECIAL_FORMS = new Set(["if","let","do","begin","fn","and","or","not","null?","match","call","export","define","set!"]);
+
+function flApplyNative(closure: any, vals: any[]): any {
+  if (!closure || closure.kind !== "closure") return null;
+  const params: string[] = closure.params || [];
+  const closureEnv = closure["closure-env"] ?? { vars: [], parent: null };
+  let callEnv: any = { vars: [], parent: closureEnv };
+  for (let i = 0; i < params.length; i++) {
+    callEnv = flEnvBind(callEnv, params[i], i < vals.length ? vals[i] : null);
+  }
+  const body: any[] = closure.body || [];
+  let result: any = null;
+  for (const node of body) {
+    result = flInterpNative(node, callEnv);
+  }
+  return result;
+}
+
+function flInterpNative(node: any, env: any): any {
+  if (node === null || node === undefined) return null;
+  const kind = node.kind;
+  if (kind === "literal") return node.value;
+  if (kind === "variable") return flEnvGet(env, node.name);
+  if (kind === "array") {
+    const items: any[] = node.items || [];
+    return items.map((item: any) => flInterpNative(item, env));
+  }
+  if (kind === "block") {
+    if (node.type === "Array") {
+      const items = flBlockItems(node);
+      return items.map((item: any) => flInterpNative(item, env));
+    }
+    if (node.type === "Map") {
+      // 맵 리터럴: {:key1 val1 :key2 val2} → JS 오브젝트
+      // ⚠️ node.fields가 JS Map 인스턴스여야 함 — 아니면 조용히 {} 반환 (데이터 손실)
+      // make-closure 같은 FL 함수가 맵 리터럴 반환할 때 이 경로 탐
+      const result: Record<string, any> = {};
+      if (node.fields instanceof Map) {
+        for (const [key, valNode] of node.fields) {
+          result[key] = flInterpNative(valNode, env);
+        }
+      }
+      return result;
+    }
+    if (node.type === "FUNC") {
+      const fields = node.fields;
+      let paramsNode: any = null, bodyNode: any = null;
+      // ⚠️ 이중 구조 지원: 파서 버전에 따라 Map 또는 plain object로 올 수 있음
+      // Map이면 fields.get(), plain이면 fields.params 직접 접근
+      if (fields instanceof Map) {
+        paramsNode = fields.get("params");
+        bodyNode = fields.get("body");
+      } else if (fields) {
+        paramsNode = fields.params;
+        bodyNode = fields.body;
+      }
+      const names = flGetParamNames(paramsNode);
+      return { kind: "closure", params: names, body: [bodyNode], "closure-env": env };
+    }
+    return null;
+  }
+  if (kind === "sexpr") {
+    return flInterpSexpr(node.op, node.args || [], env);
+  }
+  return null;
+}
+
+function flInterpSexpr(op: any, rawArgs: any[], env: any): any {
+  // op가 문자열이 아니면 AST 노드 — 평가 후 클로저로 호출
+  if (typeof op !== "string") {
+    const fn = flInterpNative(op, env);
+    const vals = rawArgs.map((a: any) => flInterpNative(a, env));
+    return fn && fn.kind === "closure" ? flApplyNative(fn, vals) : null;
+  }
+
+  if (!FL_SPECIAL_FORMS.has(op)) {
+    // 일반 함수 호출: 먼저 FL env에서 찾고, 없으면 내장 연산
+    const vals = rawArgs.map((a: any) => flInterpNative(a, env));
+    const fn = flEnvGet(env, op);
+    if (fn && fn.kind === "closure") return flApplyNative(fn, vals);
+    return flExecOpNative(op, vals);
+  }
+
+  switch (op) {
+    case "if": {
+      const cond = flInterpNative(rawArgs[0], env);
+      if (cond) return flInterpNative(rawArgs[1], env);
+      return rawArgs.length >= 3 ? flInterpNative(rawArgs[2], env) : null;
+    }
+    case "let": {
+      const pairs = flBlockItems(rawArgs[0]);
+      let newEnv = env;
+      for (const pair of pairs) {
+        const pairItems = flBlockItems(pair);
+        if (pairItems.length < 2) continue;
+        const nameNode = pairItems[0];
+        const name = nameNode.kind === "variable" ? nameNode.name : String(nameNode.value ?? "");
+        const val = flInterpNative(pairItems[1], newEnv);
+        newEnv = flEnvBind(newEnv, name, val);
+      }
+      let result: any = null;
+      for (let i = 1; i < rawArgs.length; i++) result = flInterpNative(rawArgs[i], newEnv);
+      return result;
+    }
+    case "fn": {
+      const names = flGetParamNames(rawArgs[0]);
+      return { kind: "closure", params: names, body: rawArgs.slice(1), "closure-env": env };
+    }
+    case "do": case "begin": {
+      let result: any = null;
+      for (const node of rawArgs) result = flInterpNative(node, env);
+      return result;
+    }
+    case "and": {
+      for (const arg of rawArgs) { if (!flInterpNative(arg, env)) return false; }
+      return true;
+    }
+    case "or": {
+      for (const arg of rawArgs) { if (flInterpNative(arg, env)) return true; }
+      return false;
+    }
+    case "not": return !flInterpNative(rawArgs[0], env);
+    case "null?": { const v = flInterpNative(rawArgs[0], env); return v === null || v === undefined; }
+    case "call": {
+      // (call $fn arg1 arg2...) 또는 (call $fn [args])
+      const fnRaw = flInterpNative(rawArgs[0], env);
+      const fn = (fnRaw && fnRaw.kind === "closure") ? fnRaw
+                 : (typeof fnRaw === "string" ? flEnvGet(env, fnRaw) : null);
+      if (!fn || fn.kind !== "closure") return null;
+      let vals: any[];
+      if (rawArgs.length === 2) {
+        const a = flInterpNative(rawArgs[1], env);
+        vals = Array.isArray(a) ? a : [a];
+      } else {
+        vals = rawArgs.slice(1).map((a: any) => flInterpNative(a, env));
+      }
+      return flApplyNative(fn, vals);
+    }
+    case "match": {
+      const subject = flInterpNative(rawArgs[0], env);
+      for (let i = 1; i < rawArgs.length; i++) {
+        const clause = rawArgs[i];
+        const patOp = clause.op;
+        const resultExpr = (clause.args || [])[0];
+        let matched = false;
+        if (patOp === "_") matched = true;
+        else if (patOp === "null") matched = subject === null || subject === undefined;
+        else if (patOp === "true") matched = subject === true;
+        else if (patOp === "false") matched = subject === false;
+        else { const n = parseFloat(patOp); matched = subject === patOp || (!isNaN(n) && subject === n); }
+        if (matched) return flInterpNative(resultExpr, env);
+      }
+      return null;
+    }
+    case "export": return null;
+    case "define": case "set!": {
+      if (rawArgs.length >= 2) {
+        const nameNode = rawArgs[0];
+        const name = nameNode.kind === "variable" ? nameNode.name : String(nameNode.value ?? "");
+        // ⚠️ 이름 추출 규칙: variable 노드면 .name ($x → "x"), literal이면 .value (x → "x")
+        // 즉 (define $x 42)와 (define x 42) 둘 다 "x"로 바인딩됨
+        // 하지만 참조는 $x로 해야 함 — x(심볼)로 참조하면 문자열 "x" 반환 (알려진 함정!)
+        const val = flInterpNative(rawArgs[1], env);
+        // ⚠️ 뮤테이션: env.vars 직접 수정 — 함수형 아님!
+        // fl-run-nodes가 같은 env 참조를 다음 노드에도 재사용하므로 바인딩이 전파됨
+        // env-bind처럼 새 객체 만들면 다음 노드에 안 보임 (참조가 끊어지기 때문)
+        if (env && Array.isArray(env.vars)) env.vars.unshift([name, val]);
+        return val;
+      }
+      return null;
+    }
+    default: return null;
+  }
+}
+
+// ── End Native FL Interpreter Helpers ────────────────────────────────────────
+
 export function evalBuiltin(interp: Interpreter, op: string, args: any[], expr: SExpr): any {
   // interp.eval은 public이어야 하므로 (실제로는 public)
   const ev = (node: any) => (interp as any).eval(node);
@@ -432,6 +767,82 @@ export function evalBuiltin(interp: Interpreter, op: string, args: any[], expr: 
         flenv = flenv.parent;
       }
       return null;
+    }
+    case "fl-special-op?": {
+      // fl-eval-sexpr 12중첩 if 대체 — op가 특수 형식인지 반환
+      const sop = String(args[0]);
+      const specials = ["if","let","do","begin","fn","and","or","not","null?","match","call","export","define","set!"];
+      return specials.includes(sop) ? sop : null;
+    }
+    case "fl-exec-op": {
+      // fl-eval-builtin의 29중첩 if 대체 — 네이티브 산술/비교/문자열 디스패치
+      // (fl-exec-op op vals) — vals는 이미 평가된 JS 배열
+      const op = String(args[0]);
+      const vals: any[] = Array.isArray(args[1]) ? args[1] : [];
+      const v0 = vals[0], v1 = vals[1], v2 = vals[2];
+      switch (op) {
+        case "+": return vals.reduce((a: number, b: number) => a + b, 0);
+        case "-": return vals.length === 1 ? -v0 : vals.reduce((a: number, b: number) => a - b);
+        case "*": return vals.reduce((a: number, b: number) => a * b, 1);
+        case "/": return vals.length === 1 ? 1 / v0 : vals.reduce((a: number, b: number) => a / b);
+        case "%": return typeof v0 === "number" && typeof v1 === "number" ? v0 % v1 : null;
+        case "=": return v0 === v1;
+        case "!=": return v0 !== v1;
+        case "<": return v0 < v1;
+        case ">": return v0 > v1;
+        case "<=": return v0 <= v1;
+        case ">=": return v0 >= v1;
+        case "concat": return vals.reduce((a: string, b: any) => a + String(b ?? ""), "");
+        case "length": return Array.isArray(v0) ? v0.length : typeof v0 === "string" ? v0.length : 0;
+        case "get":
+          if (Array.isArray(v0)) return typeof v1 === "number" ? (v0[v1] ?? null) : null;
+          if (typeof v0 === "string") return typeof v1 === "number" ? (v0[v1] ?? null) : null;
+          if (v0 instanceof Map) return v0.get(String(v1).replace(/^:/, "")) ?? null;
+          if (v0 !== null && typeof v0 === "object") return v0[String(v1).replace(/^:/, "")] ?? v0[v1] ?? null;
+          return null;
+        case "append": return Array.isArray(v0) && Array.isArray(v1) ? [...v0, ...v1] : Array.isArray(v0) ? [...v0, v1] : [v0, v1];
+        case "slice": return Array.isArray(v0) ? v0.slice(v1, v2) : typeof v0 === "string" ? v0.slice(v1, v2) : [];
+        case "num-to-str": return String(v0 ?? "");
+        case "str-to-num": return parseFloat(String(v0));
+        case "replace": return typeof v0 === "string" ? v0.split(String(v1)).join(String(v2)) : v0;
+        case "str-join": return Array.isArray(v0) ? v0.join(String(v1 ?? "")) : String(v0 ?? "");
+        case "null?": return v0 === null || v0 === undefined;
+        case "array?": return Array.isArray(v0);
+        case "string?": return typeof v0 === "string";
+        case "number?": return typeof v0 === "number";
+        case "read-file":
+        case "file_read": try { return require("fs").readFileSync(String(v0), "utf-8"); } catch { return null; }
+        case "write-file":
+        case "file_write": try { require("fs").writeFileSync(String(v0), String(v1 ?? "")); return true; } catch { return false; }
+        case "file-exists?":
+        case "file_exists": try { return require("fs").existsSync(String(v0)); } catch { return false; }
+        case "file-append":
+        case "file_append": try { require("fs").appendFileSync(String(v0), String(v1 ?? "")); return true; } catch { return false; }
+        case "dir-list":
+        case "dir_list": try { return require("fs").readdirSync(String(v0)); } catch { return []; }
+        default: return null;
+      }
+    }
+    // ── 네이티브 FL 인터프리터 ─────────────────────────────────────
+    // fl-interp: FL AST 노드를 native TS로 직접 평가 (스택오버플로우 방지)
+    // fl-fix-env: 로드된 FL env의 모든 closure-env를 final env로 업데이트 (재귀 지원)
+    case "fl-interp":
+      return flInterpNative(args[0], args[1]);
+    case "fl-parse": {
+      // FL 소스 문자열 → AST 배열 (셀프 호스팅: interpret에 넘기기용)
+      try { return _flParse(_flLex(String(args[0] ?? ""))); } catch { return []; }
+    }
+    case "fl-fix-env": {
+      // fl-load-funcs 후 모든 클로저의 closure-env를 최종 env로 업데이트
+      // 이를 통해 재귀 함수가 자기 자신을 closure-env에서 찾을 수 있음
+      const finalEnv = args[0];
+      if (!finalEnv || !Array.isArray(finalEnv.vars)) return finalEnv;
+      for (const pair of finalEnv.vars) {
+        if (Array.isArray(pair) && pair[1] && typeof pair[1] === "object" && pair[1].kind === "closure") {
+          pair[1]["closure-env"] = finalEnv;
+        }
+      }
+      return finalEnv;
     }
     case "assoc":
       if (args[0] !== null && typeof args[0] === "object" && !Array.isArray(args[0])) {
@@ -3479,6 +3890,12 @@ export function evalBuiltin(interp: Interpreter, op: string, args: any[], expr: 
         if (r145 !== null) return r145;
       }
 
+      // === Phase 151: WebSocket Built-in ===
+      if (op.startsWith("ws-")) {
+        const r151 = evalWebSocket151(op, args, callFnVal, interp);
+        if (r151 !== undefined) return r151;
+      }
+
       // Phase 59: callUserFunction을 통해 FunctionNotFoundError(유사 함수 힌트 포함) 발생
       return callUser(op, args);
     }
@@ -5116,5 +5533,114 @@ function evalWorldModel141(op: string, args: any[]): any {
   }
   if (op === "world-summarize") { return globalWorldModel.summarize(); }
   if (op === "world-history") { return globalWorldModel.getHistory().map(u => new Map<string, any>([["type", u.type], ["source", u.source], ["timestamp", u.timestamp.toISOString()]])); }
+  return undefined;
+}
+
+// === Phase 151: WebSocket Built-in Functions ===
+export function evalWebSocket151(op: string, args: any[], callFnVal: (fn: any, a: any[]) => any, interp: Interpreter): any {
+
+  // ── 서버 측 ──
+  // (ws-server-start port) → server-id
+  if (op === "ws-server-start") {
+    const port = Number(args[0] ?? 8080);
+    const serverId = `wss_${++_wsServerCounter}`;
+    const clients = new Map();
+    const handlers = new Map();
+    const wss = new _WSServer({ port });
+
+    wss.on("connection", (socket: any) => {
+      const cid = `c_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      clients.set(cid, socket);
+      socket.on("message", (d: Buffer) => {
+        const h = handlers.get("message");
+        if (h) try { callFnVal(h, [cid, d.toString()]); } catch (e) {}
+      });
+      socket.on("close", () => {
+        clients.delete(cid);
+        const h = handlers.get("close");
+        if (h) try { callFnVal(h, [cid]); } catch (e) {}
+      });
+      const h = handlers.get("connect");
+      if (h) try { callFnVal(h, [cid]); } catch (e) {}
+    });
+
+    globalWebSocketServers.set(serverId, { wss, clients, handlers });
+    return serverId;
+  }
+
+  // (ws-server-broadcast server-id msg) → 전송 수
+  if (op === "ws-server-broadcast") {
+    const entry = globalWebSocketServers.get(String(args[0]));
+    if (!entry) return 0;
+    let n = 0;
+    for (const [, s] of entry.clients)
+      if (s.readyState === 1) { s.send(String(args[1] ?? "")); n++; }
+    return n;
+  }
+
+  // (ws-server-on server-id event handler) → null
+  if (op === "ws-server-on") {
+    const entry = globalWebSocketServers.get(String(args[0]));
+    if (entry) entry.handlers.set(String(args[1]), args[2]);
+    return null;
+  }
+
+  // (ws-server-stop server-id) → null
+  if (op === "ws-server-stop") {
+    const entry = globalWebSocketServers.get(String(args[0]));
+    if (entry) {
+      entry.wss.close();
+      globalWebSocketServers.delete(String(args[0]));
+    }
+    return null;
+  }
+
+  // ── 클라이언트 측 ──
+  // (ws-connect url) → FreeLangPromise<conn-id>
+  if (op === "ws-connect") {
+    return new FreeLangPromise((resolve, reject) => {
+      const connId = `wsconn_${++_wsConnCounter}`;
+      const handlers = new Map();
+      const socket = new _WSClient(String(args[0]));
+      globalWebSocketConnections.set(connId, { socket, handlers });
+      socket.on("open",    () => resolve(connId));
+      socket.on("error",   (e: Error) => reject(e));
+      socket.on("message", (d: Buffer) => {
+        const h = handlers.get("message");
+        if (h) try { callFnVal(h, [d.toString()]); } catch (e) {}
+      });
+      socket.on("close", () => {
+        globalWebSocketConnections.delete(connId);
+        const h = handlers.get("close");
+        if (h) try { callFnVal(h, []); } catch (e) {}
+      });
+    });
+  }
+
+  // (ws-send conn-id msg) → boolean
+  if (op === "ws-send") {
+    const entry = globalWebSocketConnections.get(String(args[0]));
+    if (!entry || entry.socket.readyState !== 1) return false;
+    entry.socket.send(String(args[1] ?? ""));
+    return true;
+  }
+
+  // (ws-on conn-id event handler) → null
+  if (op === "ws-on") {
+    const entry = globalWebSocketConnections.get(String(args[0]));
+    if (entry) entry.handlers.set(String(args[1]), args[2]);
+    return null;
+  }
+
+  // (ws-close conn-id) → null
+  if (op === "ws-close") {
+    const entry = globalWebSocketConnections.get(String(args[0]));
+    if (entry) {
+      entry.socket.close();
+      globalWebSocketConnections.delete(String(args[0]));
+    }
+    return null;
+  }
+
   return undefined;
 }
