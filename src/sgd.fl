@@ -1,0 +1,232 @@
+; ============================================================================
+; FreeLang v9 — Phase 157: Stochastic Gradient Descent & Variants
+; SGD, Momentum, Nesterov, Mini-batch 최적화
+; ============================================================================
+
+(load "src/vectors.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Basic SGD (Stochastic Gradient Descent)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; SGD 옵티마이저 상태
+(defn create-sgd-optimizer [&:key [learning-rate 0.01]]
+  "Create SGD optimizer state"
+  {:type :sgd
+   :learning-rate learning-rate
+   :iteration 0
+   :loss-history []})
+
+; SGD 단계 업데이트
+(defn sgd-step [params gradients optimizer]
+  "Perform single SGD step"
+  (let [lr (:learning-rate optimizer)
+        updated-params (vector-subtract params
+                         (vector-scale gradients lr))]
+    {:params updated-params
+     :optimizer (update optimizer :iteration inc)}))
+
+; 배치 SGD (여러 샘플)
+(defn sgd-batch-step [params batch-gradients optimizer]
+  "Perform SGD step with batch of gradients"
+  (let [avg-gradient (create-vector
+                      (map (fn [i]
+                        (/ (apply + (map (fn [g] (nth (:values g) i)) batch-gradients))
+                           (count batch-gradients)))
+                        (range (:dimension params))))
+        updated-params (vector-subtract params
+                         (vector-scale avg-gradient (:learning-rate optimizer)))]
+    {:params updated-params
+     :optimizer (update optimizer :iteration inc)}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Momentum SGD
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Momentum 옵티마이저
+(defn create-momentum-optimizer [&:key [learning-rate 0.01] [momentum 0.9]]
+  "Create Momentum SGD optimizer"
+  {:type :momentum
+   :learning-rate learning-rate
+   :momentum momentum
+   :velocity (atom nil)
+   :iteration 0
+   :loss-history []})
+
+; Momentum 단계 업데이트
+(defn momentum-step [params gradients optimizer]
+  "Perform Momentum SGD step"
+  (let [lr (:learning-rate optimizer)
+        mu (:momentum optimizer)
+        v (if (nil? @(:velocity optimizer))
+           (create-vector (vec (repeat (:dimension params) 0)))
+           @(:velocity optimizer))
+        new-v (vector-add
+                (vector-scale v mu)
+                (vector-scale gradients lr))
+        updated-params (vector-subtract params new-v)]
+    (reset! (:velocity optimizer) new-v)
+    {:params updated-params
+     :optimizer (assoc (update optimizer :iteration inc)
+                  :velocity (:velocity optimizer))}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Nesterov Accelerated Gradient (NAG)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Nesterov 옵티마이저
+(defn create-nesterov-optimizer [&:key [learning-rate 0.01] [momentum 0.9]]
+  "Create Nesterov Accelerated Gradient optimizer"
+  {:type :nesterov
+   :learning-rate learning-rate
+   :momentum momentum
+   :velocity (atom nil)
+   :iteration 0
+   :loss-history []})
+
+; Nesterov 단계 업데이트
+(defn nesterov-step [params gradients optimizer]
+  "Perform Nesterov AGD step"
+  (let [lr (:learning-rate optimizer)
+        mu (:momentum optimizer)
+        v (if (nil? @(:velocity optimizer))
+           (create-vector (vec (repeat (:dimension params) 0)))
+           @(:velocity optimizer))
+        ; Look-ahead 방향으로 기울기 계산
+        lookahead-params (vector-subtract params (vector-scale v mu))
+        new-v (vector-add
+                (vector-scale v mu)
+                (vector-scale gradients lr))
+        updated-params (vector-subtract lookahead-params
+                         (vector-scale gradients lr))]
+    (reset! (:velocity optimizer) new-v)
+    {:params updated-params
+     :optimizer (assoc (update optimizer :iteration inc)
+                  :velocity (:velocity optimizer))}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Mini-Batch Processing
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 미니배치 분할
+(defn create-mini-batches [data batch-size]
+  "Split data into mini-batches"
+  (let [n (count data)
+        batches (atom [])]
+    (dotimes [i (Math/ceil (/ n batch-size))]
+      (let [start (* i batch-size)
+            end (min (+ start batch-size) n)
+            batch (vec (take (- end start) (drop start data)))]
+        (swap! batches conj batch)))
+    @batches))
+
+; 배치별 처리
+(defn process-mini-batches [params batches loss-fn grad-fn optimizer]
+  "Process data in mini-batches"
+  (reduce (fn [state batch]
+    (let [batch-loss (apply + (map loss-fn batch))
+          batch-gradients (map grad-fn batch)
+          {:keys [params optimizer]} (sgd-batch-step params batch-gradients optimizer)]
+      (do
+        (swap! (:loss-history optimizer) conj batch-loss)
+        {:params params :optimizer optimizer})))
+    {:params params :optimizer optimizer}
+    batches))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Learning Rate Scheduling
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 학습률 스케줄링 (Linear decay)
+(defn linear-decay-lr [initial-lr iteration max-iterations]
+  "Linear decay learning rate schedule"
+  (let [decay (/ iteration max-iterations)]
+    (* initial-lr (- 1 decay))))
+
+; 학습률 스케줄링 (Exponential decay)
+(defn exponential-decay-lr [initial-lr iteration decay-rate decay-steps]
+  "Exponential decay learning rate schedule"
+  (* initial-lr (Math/pow decay-rate (/ iteration decay-steps))))
+
+; 학습률 스케줄링 (Step decay)
+(defn step-decay-lr [initial-lr iteration step-size decay-factor]
+  "Step decay learning rate schedule"
+  (* initial-lr (Math/pow decay-factor (Math/floor (/ iteration step-size)))))
+
+; 학습률 스케줄러 적용
+(defn apply-lr-schedule [optimizer schedule-fn iteration]
+  "Apply learning rate schedule to optimizer"
+  (assoc optimizer :learning-rate (schedule-fn iteration)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Convergence Monitoring
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 손실 개선 추적
+(defn check-convergence [loss-history &:key [window 10] [tolerance 0.001]]
+  "Check if loss is converging"
+  (if (< (count loss-history) window)
+    {:converged false :reason "insufficient-history"}
+    (let [recent (take-last window loss-history)
+          improvement (- (first recent) (last recent))
+          improvement-ratio (/ improvement (Math/abs (first recent)))]
+      {:converged (< improvement-ratio tolerance)
+       :improvement improvement
+       :improvement-ratio improvement-ratio
+       :window-avg (/ (apply + recent) (count recent))})))
+
+; 손실 값 추적
+(defn record-loss [optimizer loss]
+  "Record loss value in history"
+  (update optimizer :loss-history conj loss))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 7. Gradient Clipping
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 기울기 클리핑 (L2 norm)
+(defn clip-gradients-by-norm [gradients max-norm]
+  "Clip gradients by L2 norm"
+  (let [norm (vector-length gradients)
+        clipping-scale (if (> norm max-norm) (/ max-norm norm) 1.0)]
+    (vector-scale gradients clipping-scale)))
+
+; 기울기 클리핑 (Value)
+(defn clip-gradients-by-value [gradients min-val max-val]
+  "Clip gradients to value range"
+  (create-vector
+    (map (fn [g]
+      (cond
+        (< g min-val) min-val
+        (> g max-val) max-val
+        :else g))
+      (:values gradients))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 8. Optimization Utilities
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 최적화 상태 요약
+(defn optimizer-summary [optimizer]
+  "Get optimizer summary"
+  {:type (:type optimizer)
+   :learning-rate (:learning-rate optimizer)
+   :iteration (:iteration optimizer)
+   :loss-count (count (:loss-history optimizer))
+   :latest-loss (if (empty? (:loss-history optimizer))
+                  nil
+                  (last (:loss-history optimizer)))})
+
+; 최적화 리셋
+(defn reset-optimizer [optimizer]
+  "Reset optimizer state"
+  (assoc optimizer
+    :iteration 0
+    :loss-history []
+    :velocity (if (:velocity optimizer) (atom nil) nil)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Stochastic Gradient Descent (Phase 157) loaded")

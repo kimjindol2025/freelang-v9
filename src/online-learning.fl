@@ -1,0 +1,238 @@
+; ============================================================================
+; FreeLang v9 — Phase 157: Online Learning & Concept Drift Detection
+; 온라인 학습, 개념 드리프트 감지, 슬라이딩 윈도우
+; ============================================================================
+
+(load "src/vectors.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Online Learning Model
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 온라인 학습 모델 초기화
+(defn create-online-model [initial-params &:key
+                          [optimizer :adam]
+                          [learning-rate 0.001]
+                          [window-size 100]]
+  "Create online learning model"
+  {:params initial-params
+   :optimizer (select-optimizer optimizer :learning-rate learning-rate)
+   :window-size window-size
+   :data-window (atom [])
+   :loss-window (atom [])
+   :update-count 0
+   :predictions-history []})
+
+; 온라인 업데이트 (점진적 학습)
+(defn online-update [model sample loss-fn grad-fn]
+  "Update model with single sample"
+  (let [gradients (grad-fn sample)
+        clipped-gradients (clip-gradients-by-norm gradients 1.0)
+        {:keys [params optimizer]} (optimizer-step (:params model) clipped-gradients (:optimizer model))
+        loss (loss-fn sample)]
+    (do
+      (swap! (:data-window model) (fn [w]
+        (if (>= (count w) (:window-size model))
+          (conj (vec (rest w)) sample)
+          (conj w sample))))
+      (swap! (:loss-window model) (fn [w]
+        (if (>= (count w) (:window-size model))
+          (conj (vec (rest w)) loss)
+          (conj w loss))))
+      (assoc model
+        :params params
+        :optimizer optimizer
+        :update-count (inc (:update-count model))
+        :loss loss))))
+
+; 배치 온라인 업데이트
+(defn online-batch-update [model samples loss-fn grad-fn]
+  "Update model with batch of samples"
+  (reduce (fn [m sample]
+    (online-update m sample loss-fn grad-fn))
+    model
+    samples))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Concept Drift Detection
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 개념 드리프트 감지 (ADWIN - Adaptive Windowing)
+(defn detect-concept-drift [loss-window &:key [threshold 0.001] [min-window 10]]
+  "Detect concept drift using ADWIN method"
+  (if (< (count loss-window) (* 2 min-window))
+    {:drift-detected false :reason "insufficient-history"}
+    (let [n (count loss-window)
+          mid (quot n 2)
+          before (take mid loss-window)
+          after (drop mid loss-window)
+
+          mean-before (/ (apply + before) (count before))
+          mean-after (/ (apply + after) (count after))
+
+          var-before (if (> (count before) 1)
+                      (/ (apply + (map (fn [x] (* (- x mean-before) (- x mean-before))) before))
+                         (dec (count before)))
+                      0)
+          var-after (if (> (count after) 1)
+                     (/ (apply + (map (fn [x] (* (- x mean-after) (- x mean-after))) after))
+                        (dec (count after)))
+                     0)
+
+          pooled-var (/ (+ (* (dec (count before)) var-before)
+                          (* (dec (count after)) var-after))
+                       (- n 2))
+          se (Math/sqrt (* pooled-var (+ (/ 1 (count before)) (/ 1 (count after)))))
+          t-stat (if (> se 0) (/ (Math/abs (- mean-before mean-after)) se) 0)]
+
+      {:drift-detected (> t-stat threshold)
+       :t-statistic t-stat
+       :mean-before mean-before
+       :mean-after mean-after
+       :drift-magnitude (- mean-after mean-before)})))
+
+; DDM (Drift Detection Method)
+(defn detect-drift-ddm [loss-window &:key [alpha 0.003]]
+  "Detect drift using DDM (Drift Detection Method)"
+  (if (< (count loss-window) 30)
+    {:drift-detected false :reason "insufficient-history"}
+    (let [recent (take-last 10 loss-window)
+          older (drop-last 10 loss-window)
+
+          p-recent (/ (apply + recent) (count recent))
+          p-older (/ (apply + older) (count older))
+
+          ; Z-score based detection
+          n (count older)
+          variance (+ (/ (* p-older (- 1 p-older)) n)
+                     (/ (* p-recent (- 1 p-recent)) 10))
+          z-score (if (> variance 0) (/ (- p-recent p-older) (Math/sqrt variance)) 0)]
+
+      {:drift-detected (> (Math/abs z-score) 3.0)
+       :z-score z-score
+       :error-before p-older
+       :error-after p-recent})))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Forgetting Mechanism
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 지수 감소 메모리 (Exponential Forgetting)
+(defn apply-exponential-forgetting [params gradients &:key [decay 0.95]]
+  "Apply exponential forgetting to parameters"
+  (vector-scale params decay))
+
+; 윈도우 기반 메모리 (Sliding Window)
+(defn sliding-window-average [data window-size]
+  "Compute sliding window average"
+  (if (< (count data) window-size)
+    (/ (apply + data) (count data))
+    (let [window (take-last window-size data)]
+      (/ (apply + window) (count window)))))
+
+; 시간 감가 (Time-based Decay)
+(defn time-decayed-average [timestamped-values decay-factor]
+  "Compute time-decayed average"
+  (let [current-time (apply max (map second timestamped-values))
+        decayed-values (map (fn [[val time]]
+          (let [time-diff (- current-time time)
+                weight (Math/pow decay-factor time-diff)]
+            (* val weight)))
+          timestamped-values)]
+    (/ (apply + decayed-values) (count decayed-values))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Online Metrics & Statistics
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 온라인 평균 계산
+(defn online-mean [mean count new-value]
+  "Compute online mean (Welford's algorithm)"
+  (let [n (inc count)]
+    (+ mean (/ (- new-value mean) n))))
+
+; 온라인 분산 계산
+(defn online-variance [mean count variance new-value]
+  "Compute online variance"
+  (let [n (inc count)
+        new-mean (online-mean mean count new-value)
+        delta (- new-value new-mean)
+        prev-delta (- new-value mean)]
+    [(/ (+ (* (dec count) variance)
+           (* delta prev-delta))
+        (dec n))
+     new-mean]))
+
+; 온라인 성능 추적
+(defn track-online-performance [model predictions labels]
+  "Track online performance metrics"
+  (let [accuracy (count (filter (fn [[pred label]] (= pred label))
+                               (zip predictions labels)))
+        error-rate (- 1 (/ accuracy (count predictions)))]
+    {:accuracy (/ accuracy (count predictions))
+     :error-rate error-rate
+     :total-samples (count predictions)}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Adaptive Learning Rate
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 적응형 학습률 조정
+(defn adapt-learning-rate [optimizer loss-history &:key [patience 5] [factor 0.5]]
+  "Adapt learning rate based on loss plateau"
+  (if (< (count loss-history) patience)
+    optimizer
+    (let [recent-losses (take-last patience loss-history)
+          improvement (- (first recent-losses) (last recent-losses))
+          improvement-threshold 0.001]
+      (if (< improvement improvement-threshold)
+        (update optimizer :learning-rate (fn [lr] (* lr factor)))
+        optimizer))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Online Model Evaluation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 온라인 모델 평가
+(defn evaluate-online-model [model &:key [metric :accuracy]]
+  "Evaluate online model performance"
+  {:update-count (:update-count model)
+   :loss-trend (if (> (count @(:loss-window model)) 2)
+                 (let [w @(:loss-window model)
+                       recent (take-last 5 w)
+                       older (take 5 w)]
+                   (> (/ (apply + older) (count older))
+                      (/ (apply + recent) (count recent))))
+                 nil)
+   :has-drift (detect-concept-drift @(:loss-window model))})
+
+; 온라인 모델 요약
+(defn online-model-summary [model]
+  "Get online model summary"
+  {:type "online-learning-model"
+   :optimizer-type (:type (:optimizer model))
+   :total-updates (:update-count model)
+   :window-size (:window-size model)
+   :current-window-size (count @(:data-window model))
+   :latest-loss (if (empty? @(:loss-window model)) nil (last @(:loss-window model)))})
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 7. Batch Normalization (Online Variant)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 온라인 배치 정규화
+(defn online-batch-normalize [data-window &:key [epsilon 1e-5]]
+  "Apply batch normalization to window"
+  (if (empty? data-window)
+    data-window
+    (let [mean (sliding-window-average (apply concat data-window) (count data-window))
+          var (/ (apply + (map (fn [x] (* (- x mean) (- x mean))) (apply concat data-window)))
+                (count (apply concat data-window)))]
+      (map (fn [x] (/ (- x mean) (Math/sqrt (+ var epsilon))))
+        (apply concat data-window)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Online Learning & Concept Drift Detection (Phase 157) loaded")

@@ -1,0 +1,301 @@
+; ============================================================================
+; FreeLang v9 — Phase 157: Adaptive Optimizers
+; Adam, RMSProp, AdaGrad, AdaDelta 최적화
+; ============================================================================
+
+(load "src/vectors.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Adam Optimizer
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Adam 옵티마이저 생성
+(defn create-adam-optimizer [&:key
+                            [learning-rate 0.001]
+                            [beta1 0.9]
+                            [beta2 0.999]
+                            [epsilon 1e-8]]
+  "Create Adam optimizer"
+  {:type :adam
+   :learning-rate learning-rate
+   :beta1 beta1
+   :beta2 beta2
+   :epsilon epsilon
+   :m (atom nil)      ; First moment (mean)
+   :v (atom nil)      ; Second moment (variance)
+   :iteration 0
+   :loss-history []})
+
+; Adam 단계 업데이트
+(defn adam-step [params gradients optimizer]
+  "Perform Adam optimizer step"
+  (let [lr (:learning-rate optimizer)
+        beta1 (:beta1 optimizer)
+        beta2 (:beta2 optimizer)
+        eps (:epsilon optimizer)
+        t (inc (:iteration optimizer))
+
+        m (if (nil? @(:m optimizer))
+           (create-vector (vec (repeat (:dimension params) 0)))
+           @(:m optimizer))
+        v (if (nil? @(:v optimizer))
+           (create-vector (vec (repeat (:dimension params) 0)))
+           @(:v optimizer))
+
+        ; Update biased first moment estimate
+        m-new (vector-add
+                (vector-scale m beta1)
+                (vector-scale gradients (- 1 beta1)))
+
+        ; Update biased second raw moment estimate
+        grad-squared (create-vector (map (fn [g] (* g g)) (:values gradients)))
+        v-new (vector-add
+                (vector-scale v beta2)
+                (vector-scale grad-squared (- 1 beta2)))
+
+        ; Bias correction
+        m-hat (create-vector (map (fn [x] (/ x (- 1 (Math/pow beta1 t))))
+                                (:values m-new)))
+        v-hat (create-vector (map (fn [x] (/ x (- 1 (Math/pow beta2 t))))
+                                (:values v-new)))
+
+        ; Update parameters
+        update-term (create-vector
+                     (map (fn [m v]
+                       (/ m (+ (Math/sqrt v) eps)))
+                       (:values m-hat)
+                       (:values v-hat)))
+
+        updated-params (vector-subtract params
+                         (vector-scale update-term lr))]
+
+    (reset! (:m optimizer) m-new)
+    (reset! (:v optimizer) v-new)
+
+    {:params updated-params
+     :optimizer (assoc (update optimizer :iteration inc)
+                  :m (:m optimizer)
+                  :v (:v optimizer))}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. RMSProp Optimizer
+; ─────────────────────────────────────────────────────────────────────────────
+
+; RMSProp 옵티마이저 생성
+(defn create-rmsprop-optimizer [&:key
+                               [learning-rate 0.001]
+                               [decay 0.99]
+                               [epsilon 1e-8]]
+  "Create RMSProp optimizer"
+  {:type :rmsprop
+   :learning-rate learning-rate
+   :decay decay
+   :epsilon epsilon
+   :v (atom nil)      ; Accumulated squared gradients
+   :iteration 0
+   :loss-history []})
+
+; RMSProp 단계 업데이트
+(defn rmsprop-step [params gradients optimizer]
+  "Perform RMSProp optimizer step"
+  (let [lr (:learning-rate optimizer)
+        decay (:decay optimizer)
+        eps (:epsilon optimizer)
+
+        v (if (nil? @(:v optimizer))
+           (create-vector (vec (repeat (:dimension params) 0)))
+           @(:v optimizer))
+
+        ; Accumulate squared gradients
+        grad-squared (create-vector (map (fn [g] (* g g)) (:values gradients)))
+        v-new (vector-add
+                (vector-scale v decay)
+                (vector-scale grad-squared (- 1 decay)))
+
+        ; Update parameters
+        update-term (create-vector
+                     (map (fn [g v]
+                       (/ g (+ (Math/sqrt v) eps)))
+                       (:values gradients)
+                       (:values v-new)))
+
+        updated-params (vector-subtract params
+                         (vector-scale update-term lr))]
+
+    (reset! (:v optimizer) v-new)
+
+    {:params updated-params
+     :optimizer (assoc (update optimizer :iteration inc)
+                  :v (:v optimizer))}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. AdaGrad Optimizer
+; ─────────────────────────────────────────────────────────────────────────────
+
+; AdaGrad 옵티마이저 생성
+(defn create-adagrad-optimizer [&:key
+                               [learning-rate 0.01]
+                               [epsilon 1e-8]]
+  "Create AdaGrad optimizer"
+  {:type :adagrad
+   :learning-rate learning-rate
+   :epsilon epsilon
+   :g (atom nil)      ; Accumulated squared gradients
+   :iteration 0
+   :loss-history []})
+
+; AdaGrad 단계 업데이트
+(defn adagrad-step [params gradients optimizer]
+  "Perform AdaGrad optimizer step"
+  (let [lr (:learning-rate optimizer)
+        eps (:epsilon optimizer)
+
+        g (if (nil? @(:g optimizer))
+           (create-vector (vec (repeat (:dimension params) 0)))
+           @(:g optimizer))
+
+        ; Accumulate squared gradients
+        grad-squared (create-vector (map (fn [g] (* g g)) (:values gradients)))
+        g-new (vector-add g grad-squared)
+
+        ; Update parameters
+        update-term (create-vector
+                     (map (fn [g gi]
+                       (/ g (+ (Math/sqrt gi) eps)))
+                       (:values gradients)
+                       (:values g-new)))
+
+        updated-params (vector-subtract params
+                         (vector-scale update-term lr))]
+
+    (reset! (:g optimizer) g-new)
+
+    {:params updated-params
+     :optimizer (assoc (update optimizer :iteration inc)
+                  :g (:g optimizer))}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. AdaDelta Optimizer
+; ─────────────────────────────────────────────────────────────────────────────
+
+; AdaDelta 옵티마이저 생성
+(defn create-adadelta-optimizer [&:key
+                                [decay 0.95]
+                                [epsilon 1e-8]]
+  "Create AdaDelta optimizer"
+  {:type :adadelta
+   :decay decay
+   :epsilon epsilon
+   :eg (atom nil)     ; Accumulated squared gradients
+   :ed (atom nil)     ; Accumulated squared updates
+   :iteration 0
+   :loss-history []})
+
+; AdaDelta 단계 업데이트
+(defn adadelta-step [params gradients optimizer]
+  "Perform AdaDelta optimizer step"
+  (let [decay (:decay optimizer)
+        eps (:epsilon optimizer)
+
+        eg (if (nil? @(:eg optimizer))
+            (create-vector (vec (repeat (:dimension params) 0)))
+            @(:eg optimizer))
+        ed (if (nil? @(:ed optimizer))
+            (create-vector (vec (repeat (:dimension params) 0)))
+            @(:ed optimizer))
+
+        ; Accumulate squared gradients
+        grad-squared (create-vector (map (fn [g] (* g g)) (:values gradients)))
+        eg-new (vector-add (vector-scale eg decay)
+                          (vector-scale grad-squared (- 1 decay)))
+
+        ; Calculate update
+        rms-grad (create-vector (map (fn [x] (Math/sqrt (+ x eps)))
+                                    (:values eg-new)))
+        rms-delta (create-vector (map (fn [x] (Math/sqrt (+ x eps)))
+                                     (:values ed)))
+
+        update-term (create-vector
+                     (map (fn [g rg rd]
+                       (* g (/ rd rg)))
+                       (:values gradients)
+                       (:values rms-grad)
+                       (:values rms-delta)))
+
+        ; Accumulate squared updates
+        update-squared (create-vector (map (fn [u] (* u u)) (:values update-term)))
+        ed-new (vector-add (vector-scale ed decay)
+                          (vector-scale update-squared (- 1 decay)))
+
+        updated-params (vector-subtract params update-term)]
+
+    (reset! (:eg optimizer) eg-new)
+    (reset! (:ed optimizer) ed-new)
+
+    {:params updated-params
+     :optimizer (assoc (update optimizer :iteration inc)
+                  :eg (:eg optimizer)
+                  :ed (:ed optimizer))}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Optimizer Comparison & Selection
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 최적화기 선택
+(defn select-optimizer [strategy &:key [learning-rate 0.001]]
+  "Select optimizer based on strategy"
+  (case strategy
+    :adam (create-adam-optimizer :learning-rate learning-rate)
+    :rmsprop (create-rmsprop-optimizer :learning-rate learning-rate)
+    :adagrad (create-adagrad-optimizer :learning-rate learning-rate)
+    :adadelta (create-adadelta-optimizer)
+    (create-adam-optimizer :learning-rate learning-rate)))
+
+; 최적화기 단계 (통합)
+(defn optimizer-step [params gradients optimizer]
+  "Perform single optimizer step"
+  (case (:type optimizer)
+    :adam (adam-step params gradients optimizer)
+    :rmsprop (rmsprop-step params gradients optimizer)
+    :adagrad (adagrad-step params gradients optimizer)
+    :adadelta (adadelta-step params gradients optimizer)
+    {:params params :optimizer optimizer}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Optimizer Diagnostics
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 최적화기 상태 진단
+(defn optimizer-diagnostics [optimizer]
+  "Get optimizer diagnostics"
+  {:type (:type optimizer)
+   :iteration (:iteration optimizer)
+   :loss-history-size (count (:loss-history optimizer))
+   :has-state (not (nil? @(:m optimizer)))})
+
+; 최적화기 성능 지표
+(defn optimizer-metrics [optimizer]
+  "Get optimizer performance metrics"
+  (if (< (count (:loss-history optimizer)) 2)
+    {:convergence-rate 0
+     :avg-loss 0
+     :loss-trend "insufficient-data"}
+    (let [history (:loss-history optimizer)
+          recent (take-last 10 history)
+          avg-loss (/ (apply + recent) (count recent))
+          first-loss (first history)
+          last-loss (last history)
+          improvement (- first-loss last-loss)
+          improvement-rate (if (> first-loss 0)
+                            (/ improvement first-loss)
+                            0)]
+      {:avg-loss avg-loss
+       :improvement improvement
+       :improvement-rate improvement-rate
+       :convergence-trend (if (> improvement-rate 0.01) :improving :stable)})))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Adaptive Optimizers (Phase 157) loaded")
