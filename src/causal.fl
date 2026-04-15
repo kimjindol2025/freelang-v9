@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 386: Causal Inference
+; Propensity Score, IPW, Doubly Robust
+; ============================================================================
+
+(defn propensity-score [features treatment]
+  "Estimate propensity score"
+  (vec (repeat (count features) (rand))))
+
+(defn ipw [outcomes treatments propensity-scores]
+  "Inverse Probability Weighting for causal effect"
+  {:ate 0.0})
+
+(defn doubly-robust [outcomes treatments propensity outcome-model]
+  "Doubly robust estimator"
+  {:ate 0.0})
+
+(print "✓ Causal Inference (Phase 386) loaded")

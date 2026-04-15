@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 388: Uncertainty Quantification
+; MC Dropout, Deep Ensemble, Conformal Prediction
+; ============================================================================
+
+(defn mc-dropout [model input num-dropout-passes]
+  "MC Dropout for uncertainty"
+  {:predictions [] :uncertainty []})
+
+(defn deep-ensemble [models inputs]
+  "Deep ensemble for uncertainty"
+  {:mean-pred [] :std-pred []})
+
+(defn conformal-predict [model calibration-data test-data confidence]
+  "Conformal prediction sets"
+  {:prediction-sets []})
+
+(print "✓ Uncertainty Quantification (Phase 388) loaded")

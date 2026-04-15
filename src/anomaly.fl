@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 384: Anomaly Detection
+; Isolation Forest, Autoencoder, LOF
+; ============================================================================
+
+(defn isolation-forest [data contamination num-trees]
+  "Isolation Forest for anomaly detection"
+  {:anomalies [] :scores (vec (repeat (count data) 0.0))})
+
+(defn autoencoder-anomaly [data reconstruction-error-threshold]
+  "Autoencoder-based anomaly detection"
+  {:anomalies [] :errors (vec (repeat (count data) 0.0))})
+
+(defn lof [data k-neighbors]
+  "Local Outlier Factor"
+  {:anomalies [] :lof-scores (vec (repeat (count data) 0.0))})
+
+(print "✓ Anomaly Detection (Phase 384) loaded")

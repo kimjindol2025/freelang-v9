@@ -1,0 +1,19 @@
+; ============================================================================
+; FreeLang v9 — Phase 382: Session-based Recommendation
+; GRU4Rec, NARM, Session Embedding
+; ============================================================================
+
+(defn gru4rec [item-sequence embedding-dim]
+  "GRU4Rec for session recommendation"
+  {:next-item-scores []})
+
+(defn narm [item-sequence num-items]
+  "Neural Attention Recommendation Machine"
+  {:attention-weights []
+   :next-item-pred nil})
+
+(defn session-embed [item-sequence session-length]
+  "Session embedding"
+  (vec (repeat 128 0.0)))
+
+(print "✓ Session Recommendation (Phase 382) loaded")

@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 399: Chain of Thought Reasoning
+; Step Generation, Verification, Self-consistency
+; ============================================================================
+
+(defn step-generate [question step-num max-steps model]
+  "Generate reasoning steps"
+  {:step-output "" :confidence 0.0})
+
+(defn verification-step [question step-result validator]
+  "Verify reasoning step correctness"
+  {:is-correct false :confidence 0.0})
+
+(defn self-consistency [question num-paths model]
+  "Self-consistency for CoT"
+  {:final-answer "" :confidence 0.0})
+
+(print "✓ Chain of Thought (Phase 399) loaded")

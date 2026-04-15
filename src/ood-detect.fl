@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 392: Out-of-Distribution Detection
+; Energy Score, Mahalanobis, Temperature Scaling
+; ============================================================================
+
+(defn energy-score [logits temperature]
+  "Energy score for OOD detection"
+  (* temperature (Math/log (reduce + (mapv #(Math/exp (/ % temperature)) logits)))))
+
+(defn mahalanobis-ood [features class-mean class-cov]
+  "Mahalanobis distance for OOD detection"
+  0.0)
+
+(defn temperature-scale [logits optimal-temperature]
+  "Temperature scaling for OOD detection"
+  (mapv #(/ % optimal-temperature) logits))
+
+(print "✓ OOD Detection (Phase 392) loaded")

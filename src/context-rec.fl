@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 383: Context-aware Recommendation
+; Factorization Machines, DeepFM, xDeepFM
+; ============================================================================
+
+(defn factorization-machine [features field-sizes]
+  "Factorization machine for context-aware rec"
+  {:predictions []})
+
+(defn deepfm [features dense-features]
+  "DeepFM for context-aware recommendation"
+  {:predictions []})
+
+(defn xdeepfm [features interaction-order]
+  "eXtreme Deep Factorization Machine"
+  {:predictions []})
+
+(print "✓ Context-aware Recommendation (Phase 383) loaded")

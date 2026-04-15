@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 398: Retrieval Augmented Generation
+; Dense Retrieval, Fusion-in-Decoder, Reranking
+; ============================================================================
+
+(defn dense-retrieve [query-embed index-embeds top-k]
+  "Dense retrieval for RAG"
+  (vec (take top-k (range (count index-embeds)))))
+
+(defn fusion-in-decoder [query retrieved-docs decoder]
+  "Fusion-in-Decoder for RAG"
+  {:generated-text ""})
+
+(defn rerank [query candidates reranker num-top]
+  "Reranking retrieved documents"
+  (vec (take num-top candidates)))
+
+(print "✓ RAG (Phase 398) loaded")

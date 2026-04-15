@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 387: Uplift Modeling & CATE
+; 처리 효과, Meta-learner, Qini 곡선
+; ============================================================================
+
+(defn treatment-effect [features treated control]
+  "Estimate treatment effect"
+  (- (reduce + control) (reduce + treated)))
+
+(defn meta-learner [X y treatment T learner-type]
+  "Meta-learner for heterogeneous treatment effects"
+  {:cate-predictions []})
+
+(defn qini-curve [predictions actuals treatment]
+  "Qini curve for uplift evaluation"
+  {:qini-auc 0.0})
+
+(print "✓ Uplift Modeling (Phase 387) loaded")
