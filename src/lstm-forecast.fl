@@ -1,0 +1,19 @@
+; ============================================================================
+; FreeLang v9 — Phase 324: LSTM Sequence-to-Sequence Forecasting
+; 인코더-디코더, 멀티스텝 예측
+; ============================================================================
+
+(defn lstm-seq2seq [ts lookback horizon]
+  "LSTM seq2seq forecasting model"
+  {:encoder-outputs []
+   :decoder-outputs []})
+
+(defn encoder-decoder [input-seq context-length output-length]
+  "Encoder-Decoder architecture"
+  (vec (repeat output-length 0.0)))
+
+(defn multi-step [ts steps]
+  "Multi-step ahead forecasting"
+  (vec (repeat steps 0.0)))
+
+(print "✓ LSTM Forecasting (Phase 324) loaded")

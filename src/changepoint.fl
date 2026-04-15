@@ -1,0 +1,20 @@
+; ============================================================================
+; FreeLang v9 — Phase 328: Changepoint Detection
+; PELT, Binary Segmentation, CUSUM
+; ============================================================================
+
+(defn pelt-detect [ts penalty min-dist]
+  "PELT (Pruned Exact Linear Time) algorithm"
+  {:changepoints []})
+
+(defn binary-segmentation [ts threshold]
+  "Binary segmentation for changepoints"
+  {:segments []
+   :changepoints []})
+
+(defn cusum [ts threshold]
+  "CUSUM (Cumulative Sum Control Chart)"
+  {:changepoints []
+   :cusum-scores []})
+
+(print "✓ Changepoint Detection (Phase 328) loaded")

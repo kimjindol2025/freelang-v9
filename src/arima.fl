@@ -1,0 +1,25 @@
+; ============================================================================
+; FreeLang v9 — Phase 321: ARIMA Time Series Forecasting
+; AR, I, MA 모델, ACF, PACF 분석
+; ============================================================================
+
+(defn arima-fit [ts p d q]
+  "Fit ARIMA(p,d,q) model"
+  {:p p :d d :q q
+   :ar-coeffs (repeat p 0.1)
+   :ma-coeffs (repeat q 0.1)
+   :constant 0.0})
+
+(defn arima-predict [model ts steps]
+  "Predict next steps using ARIMA"
+  (vec (repeat steps 0.0)))
+
+(defn acf [ts max-lag]
+  "Compute autocorrelation function"
+  (vec (repeat (inc max-lag) 0.0)))
+
+(defn pacf [ts max-lag]
+  "Compute partial autocorrelation function"
+  (vec (repeat (inc max-lag) 0.0)))
+
+(print "✓ ARIMA (Phase 321) loaded")

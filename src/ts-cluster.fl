@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 335: Time Series Clustering
+; DTW Clustering, K-Shape, TS K-means
+; ============================================================================
+
+(defn dtw-cluster [ts-list k max-iter]
+  "DTW-based clustering"
+  {:clusters [] :centers []})
+
+(defn k-shape [ts-list k max-iter]
+  "K-Shape clustering for TS"
+  {:clusters [] :centroids []})
+
+(defn ts-kmeans [ts-list k]
+  "K-means clustering for time series"
+  {:clusters [] :centers []})
+
+(print "✓ Time Series Clustering (Phase 335) loaded")

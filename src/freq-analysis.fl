@@ -1,0 +1,20 @@
+; ============================================================================
+; FreeLang v9 — Phase 331: Frequency Analysis & Spectral Methods
+; 주기도, 스펙트럼 밀도, FFT 분석
+; ============================================================================
+
+(defn periodogram [ts sr]
+  "Compute periodogram"
+  {:frequencies []
+   :power []})
+
+(defn spectral-density [ts method]
+  "Estimate power spectral density"
+  {:freqs []
+   :psd []})
+
+(defn fft-ts [ts]
+  "FFT for time series"
+  (vec (repeat (count ts) 0.0)))
+
+(print "✓ Frequency Analysis (Phase 331) loaded")

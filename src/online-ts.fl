@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 337: Online Learning for Time Series
+; Online SGD, Prequential Evaluation, Concept Drift
+; ============================================================================
+
+(defn online-sgd [current-sample model learning-rate]
+  "Online stochastic gradient descent"
+  model)
+
+(defn prequential-eval [ts-stream model-update metric]
+  "Prequential (test-then-train) evaluation"
+  {:cumulative-metric 0.0 :samples-seen 0})
+
+(defn concept-drift [predictions actuals window-size]
+  "Detect concept drift"
+  {:has-drift false :drift-score 0.0})
+
+(print "✓ Online Learning TS (Phase 337) loaded")

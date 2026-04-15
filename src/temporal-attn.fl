@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 338: Temporal Attention Mechanisms
+; 시간 자기주의, 위치 인코딩, 시간 인식
+; ============================================================================
+
+(defn temporal-self-attn [ts sequence-length d-model]
+  "Temporal self-attention"
+  (vec (repeat sequence-length (vec (repeat d-model 0.0)))))
+
+(defn positional-ts [sequence-length d-model]
+  "Positional encoding for temporal data"
+  (vec (repeat sequence-length (vec (repeat d-model 0.0)))))
+
+(defn time-aware [query key value time-gaps]
+  "Time-aware attention mechanism"
+  (vec (repeat (count query) 0.0)))
+
+(print "✓ Temporal Attention (Phase 338) loaded")

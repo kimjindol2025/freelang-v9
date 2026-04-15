@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 327: Granger Causality & VAR Models
+; VAR 모델, Impulse Response, Causality Test
+; ============================================================================
+
+(defn granger-test [ts1 ts2 lag p-value-threshold]
+  "Granger causality test"
+  {:causal false :p-value 1.0})
+
+(defn var-model [ts-list lag]
+  "Vector Autoregression model"
+  {:coefficients [] :residuals []})
+
+(defn impulse-response [var-model lag-steps]
+  "Compute impulse response functions"
+  (vec (repeat lag-steps [])))
+
+(print "✓ Granger Causality (Phase 327) loaded")

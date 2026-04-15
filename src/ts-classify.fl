@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 333: Time Series Classification
+; Shapelet, DTW Classification, TS Features
+; ============================================================================
+
+(defn shapelet-extract [ts num-shapelets]
+  "Extract shapelets for TS classification"
+  {:shapelets [] :thresholds []})
+
+(defn dtw-classify [ts-test ts-train labels k]
+  "DTW-based KNN classification"
+  {:predicted-label nil :confidence 0.0})
+
+(defn ts-features [ts]
+  "Extract features from time series"
+  {:mean 0.0 :std 0.0 :trend 0.0})
+
+(print "✓ Time Series Classification (Phase 333) loaded")

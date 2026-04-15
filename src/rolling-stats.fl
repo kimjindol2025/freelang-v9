@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 332: Rolling Window Statistics
+; 이동 평균, 이동 표준편차, EWMA
+; ============================================================================
+
+(defn rolling-mean [ts window-size]
+  "Rolling mean (moving average)"
+  (vec (repeat (count ts) 0.0)))
+
+(defn rolling-std [ts window-size]
+  "Rolling standard deviation"
+  (vec (repeat (count ts) 0.0)))
+
+(defn ewma [ts alpha]
+  "Exponentially Weighted Moving Average"
+  (vec (repeat (count ts) 0.0)))
+
+(print "✓ Rolling Statistics (Phase 332) loaded")

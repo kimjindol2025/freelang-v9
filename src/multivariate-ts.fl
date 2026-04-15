@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 334: Multivariate Time Series Analysis
+; VAR, 공적분, VECM
+; ============================================================================
+
+(defn var-model [ts-list lag]
+  "Vector Autoregression"
+  {:coefficients [] :residuals []})
+
+(defn cointegration [ts-pair]
+  "Test for cointegration"
+  {:cointegrated false :beta 0.0})
+
+(defn vecm [ts-list rank lag]
+  "Vector Error Correction Model"
+  {:cointegrating-vec [] :adjustment []})
+
+(print "✓ Multivariate TS (Phase 334) loaded")

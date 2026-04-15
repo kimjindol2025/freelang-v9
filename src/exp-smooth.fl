@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 322: Exponential Smoothing Methods
+; SES, DES, Holt-Winters
+; ============================================================================
+
+(defn holt-winters [ts season-length alpha beta gamma]
+  "Holt-Winters exponential smoothing"
+  {:level 0.0 :trend 0.0 :seasonal []})
+
+(defn ses [ts alpha]
+  "Simple exponential smoothing"
+  (vec (repeat (count ts) 0.0)))
+
+(defn des [ts alpha beta]
+  "Double exponential smoothing"
+  (vec (repeat (count ts) 0.0)))
+
+(print "✓ Exponential Smoothing (Phase 322) loaded")

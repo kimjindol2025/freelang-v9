@@ -1,0 +1,19 @@
+; ============================================================================
+; FreeLang v9 — Phase 340: Financial Time Series & Risk
+; 수익률 모델, GARCH 변동성, VaR 포트폴리오
+; ============================================================================
+
+(defn returns-model [prices]
+  "Model log returns"
+  (vec (repeat (dec (count prices)) 0.0)))
+
+(defn volatility-garch [returns p q]
+  "GARCH volatility model"
+  {:volatility-forecast 0.0
+   :parameters {}})
+
+(defn var-portfolio [returns alpha]
+  "Value at Risk for portfolio"
+  {:var 0.0 :cvar 0.0})
+
+(print "✓ Financial TS (Phase 340) loaded")

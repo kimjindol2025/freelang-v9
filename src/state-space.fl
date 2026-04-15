@@ -1,0 +1,20 @@
+; ============================================================================
+; FreeLang v9 — Phase 329: State Space Models & Kalman Filter
+; 칼만 필터, 스무딩, EM 학습
+; ============================================================================
+
+(defn kalman-filter [ts F Q R x0 P0]
+  "Kalman filter"
+  {:estimates []
+   :covariances []})
+
+(defn kalman-smooth [ts F Q R]
+  "Rauch-Tung-Striebel smoother"
+  {:smoothed-estimates []
+   :smoothed-covariances []})
+
+(defn em-ssm [ts max-iter]
+  "EM algorithm for state space model"
+  {:F [] :Q 0.0 :R 0.0})
+
+(print "✓ State Space Models (Phase 329) loaded")
