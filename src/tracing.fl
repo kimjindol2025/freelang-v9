@@ -1,0 +1,283 @@
+; ============================================================================
+; FreeLang v9 — Phase 153: Distributed Tracing
+; Span/Context propagation + W3C Trace Context + Jaeger integration
+; ============================================================================
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Trace ID & Span ID Generation
+; ─────────────────────────────────────────────────────────────────────────────
+
+(defn generate-trace-id []
+  "Generate W3C trace ID (32 hex characters)"
+  (let [chars "0123456789abcdef"
+        len (count chars)]
+    (apply str (map (fn [_]
+      (subs chars (Math/floor (rand (* len))) (inc (Math/floor (rand (* len))))))
+      (range 32)))))
+
+(defn generate-span-id []
+  "Generate W3C span ID (16 hex characters)"
+  (let [chars "0123456789abcdef"
+        len (count chars)]
+    (apply str (map (fn [_]
+      (subs chars (Math/floor (rand (* len))) (inc (Math/floor (rand (* len))))))
+      (range 16)))))
+
+(defn generate-trace-flags []
+  "Generate W3C trace flags (0x01 = sampled)"
+  "01")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Span Creation & Management
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Span 인스턴스 생성
+(defn create-span [
+  trace-id
+  parent-span-id
+  operation-name
+  &:key
+  [attributes {}]
+  [start-time (now)]]
+
+  {:span-id (generate-span-id)
+   :trace-id trace-id
+   :parent-span-id parent-span-id
+   :operation operation-name
+   :start-time start-time
+   :end-time nil
+   :duration-ms nil
+   :status :running
+   :attributes attributes
+   :events []
+   :tags {}
+   :logs []})
+
+; Span에 태그 추가
+(defn add-tag [span key value]
+  (assoc-in span [:tags key] value))
+
+; Span에 로그 추가
+(defn add-log [span timestamp message &:key [fields {}]]
+  (let [log-entry {:timestamp timestamp
+                   :message message
+                   :fields fields}]
+    (update span :logs conj log-entry)))
+
+; Span에 이벤트 추가
+(defn add-event [span event-name &:key [attributes {}]]
+  (let [event {:name event-name
+               :timestamp (now)
+               :attributes attributes}]
+    (update span :events conj event)))
+
+; Span 종료 (시간 기록)
+(defn finish-span [span &:key [end-time (now)] [status :success]]
+  (let [duration (- end-time (:start-time span))]
+    (assoc span
+      :end-time end-time
+      :duration-ms duration
+      :status status
+      :running false)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Trace Context (W3C Trace Context)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Context 생성 (루트 또는 자식)
+(defn create-context [
+  &:key
+  [trace-id (generate-trace-id)]
+  [span-id (generate-span-id)]
+  [parent-span-id nil]
+  [sampled true]]
+
+  {:trace-id trace-id
+   :span-id span-id
+   :parent-span-id parent-span-id
+   :sampled sampled
+   :baggage {}})
+
+; 자식 Context 생성 (부모 기준)
+(defn create-child-context [parent-context operation-name]
+  (assoc parent-context
+    :parent-span-id (:span-id parent-context)
+    :span-id (generate-span-id)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Context Propagation (W3C Trace Context Headers)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Context → traceparent 헤더 직렬화
+(defn serialize-traceparent [context]
+  "Serialize to W3C traceparent header format: 00-trace-id-span-id-flags"
+  (let [version "00"
+        trace-id (:trace-id context)
+        span-id (:span-id context)
+        flags (if (:sampled context) "01" "00")]
+    (str version "-" trace-id "-" span-id "-" flags)))
+
+; traceparent 헤더 → Context 파싱
+(defn deserialize-traceparent [header]
+  "Parse W3C traceparent header: 00-trace-id-span-id-flags"
+  (if (nil? header)
+    nil
+    (let [parts (str-split header "-")
+          version (nth parts 0)
+          trace-id (nth parts 1)
+          span-id (nth parts 2)
+          flags (nth parts 3)]
+      (if (and (= version "00") (= (count trace-id) 32) (= (count span-id) 16))
+        {:trace-id trace-id
+         :span-id span-id
+         :parent-span-id span-id
+         :sampled (= flags "01")
+         :baggage {}}
+        nil))))
+
+; HTTP 헤더에 Context 주입
+(defn inject-context [headers context]
+  "Inject trace context into HTTP headers"
+  (assoc headers
+    :traceparent (serialize-traceparent context)
+    :tracestate (str "freelang=" (:trace-id context))))
+
+; HTTP 헤더에서 Context 추출
+(defn extract-context [headers]
+  "Extract trace context from HTTP headers"
+  (if-let [traceparent (:traceparent headers)]
+    (deserialize-traceparent traceparent)
+    (create-context)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Instrumentation (자동 Span 생성)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 함수를 Span으로 래핑
+(defn with-span [context operation-name fn & args]
+  "Execute function with automatic span creation/recording"
+  (let [parent-span-id (:span-id context)
+        span (create-span (:trace-id context) parent-span-id operation-name)]
+    (fl-try
+      (do
+        (add-event span :start)
+        (let [result (apply fn args)
+              finished (finish-span span :status :success)]
+          {:span finished
+           :result result
+           :error nil}))
+      :on-error (fn [error]
+        (let [finished (finish-span span :status :error)]
+          (do
+            (add-log finished (now) "Exception" :fields {:error (str error)})
+            {:span finished
+             :result nil
+             :error error}))))))
+
+; Async 함수를 Span으로 래핑
+(defn with-span-async [context operation-name async-fn & args]
+  "Execute async function with span tracking"
+  (let [parent-span-id (:span-id context)
+        span (create-span (:trace-id context) parent-span-id operation-name)]
+    (do
+      (add-event span :start-async)
+      (let [result (apply async-fn args)]
+        (add-event span :awaiting-result)
+        {:span span
+         :promise result}))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Trace Sampling & Filtering
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Sampling 결정
+(defn should-sample [sample-rate]
+  "Decide whether to sample based on rate (0.0~1.0)"
+  (< (rand) sample-rate))
+
+; Trace 필터링
+(defn filter-spans [spans predicate]
+  "Filter spans by predicate"
+  (filter predicate spans))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 7. Trace Reporting (수집)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 전역 Trace 수집기
+(def global-trace-collector (atom []))
+
+; Span 수집
+(defn collect-span [span]
+  "Add finished span to global collector"
+  (when (not (nil? (:end-time span)))
+    (swap! global-trace-collector conj span)))
+
+; 수집된 Trace 조회
+(defn get-collected-spans []
+  "Get all collected spans"
+  @global-trace-collector)
+
+; 수집된 Trace 초기화
+(defn clear-collected-spans []
+  "Clear collected spans"
+  (reset! global-trace-collector []))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 8. Trace Metrics
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Trace 메트릭 계산
+(defn calculate-span-metrics [spans]
+  "Calculate metrics from spans"
+  (let [finished (filter (fn [s] (not (nil? (:end-time s)))) spans)
+        durations (map :duration-ms finished)
+        total-duration (reduce + 0 durations)
+        count (count finished)
+        avg-duration (if (> count 0) (/ total-duration count) 0)
+        errors (count (filter (fn [s] (= (:status s) :error)) finished))
+        error-rate (if (> count 0) (/ errors count) 0)]
+    {:total-spans count
+     :finished-spans count
+     :total-duration-ms total-duration
+     :average-duration-ms avg-duration
+     :errors errors
+     :error-rate error-rate
+     :min-duration-ms (if (empty? durations) 0 (apply min durations))
+     :max-duration-ms (if (empty? durations) 0 (apply max durations))}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 9. Utility Functions
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Context 메타데이터 추가
+(defn add-baggage [context key value]
+  "Add key-value pair to context baggage"
+  (assoc-in context [:baggage key] value))
+
+; Baggage 조회
+(defn get-baggage [context key]
+  "Get baggage value"
+  (get (:baggage context) key))
+
+; Context 복사 (새로운 추적)
+(defn fork-context [context]
+  "Create new context with same trace but new span"
+  (create-context :trace-id (:trace-id context)))
+
+; Span 계층 출력
+(defn print-span-tree [spans]
+  "Print span hierarchy"
+  (doseq [span spans]
+    (let [indent (if (:parent-span-id span) "  → " "")
+          duration (or (:duration-ms span) "running")]
+      (println (str indent
+               (:operation span) " ("
+               (:status span) ") "
+               duration "ms")))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Distributed Tracing (Phase 153) loaded")

@@ -1,0 +1,217 @@
+; ============================================================================
+; FreeLang v9 — Phase 153: Jaeger Exporter
+; Span 데이터를 Jaeger 백엔드로 전송
+; ============================================================================
+
+(load "src/tracing.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Jaeger Exporter 생성
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Jaeger Exporter 인스턴스
+(defn create-jaeger-exporter [
+  service-name
+  &:key
+  [jaeger-host "localhost"]
+  [jaeger-port 6831]
+  [batch-size 100]
+  [flush-interval-ms 5000]
+  [max-tag-value-length 256]]
+
+  {:exporter-id (str "jaeger_" (random) "_" (now))
+   :service-name service-name
+   :jaeger-host jaeger-host
+   :jaeger-port jaeger-port
+   :batch-size batch-size
+   :flush-interval-ms flush-interval-ms
+   :max-tag-value-length max-tag-value-length
+   :span-queue []
+   :flusher nil})
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Span 변환 (Jaeger 형식)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Tag 길이 제한
+(defn truncate-value [value max-length]
+  (if (and (string? value) (> (count value) max-length))
+    (subs value 0 max-length)
+    value))
+
+; Span → Jaeger Span 변환
+(defn convert-span-to-jaeger [span service-name max-tag-length]
+  "Convert FreeLang span to Jaeger format"
+  {:traceID (:trace-id span)
+   :spanID (:span-id span)
+   :parentSpanID (or (:parent-span-id span) "0")
+   :operationName (:operation span)
+   :startTime (* (:start-time span) 1000) ; microseconds
+   :duration (* (or (:duration-ms span) 0) 1000) ; microseconds
+   :tags (into []
+     (map (fn [[k v]]
+       {:key (str k)
+        :value (truncate-value v max-tag-length)})
+     (:tags span)))
+   :logs (into []
+     (map (fn [log]
+       {:timestamp (* (:timestamp log) 1000)
+        :fields [{:key "message" :value (:message log)}]})
+     (:logs span)))
+   :status (case (:status span)
+     :success "ok"
+     :error "error"
+     "unknown")})
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Batch 전송
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Jaeger HTTP API로 span 배치 전송
+(defn send-spans-to-jaeger [exporter spans]
+  "Send spans to Jaeger via HTTP"
+  (if (empty? spans)
+    {:ok true :sent 0}
+    (fl-try
+      (let [jaeger-spans (map (fn [span]
+        (convert-span-to-jaeger span (:service-name exporter) (:max-tag-value-length exporter)))
+        spans)
+            batch-data {:resourceSpans [{
+              :instrumentationLibrarySpans [{
+                :spans jaeger-spans
+              }]
+            }]}
+            endpoint (str "http://" (:jaeger-host exporter) ":" (:jaeger-port exporter) "/api/v2/spans")
+            response (http-post endpoint
+              :headers {"Content-Type" "application/json"}
+              :body (to-json batch-data)
+              :timeout 5000)]
+        {:ok (< (:status response) 400)
+         :sent (count spans)
+         :status (:status response)})
+      :on-error (fn [error]
+        {:ok false
+         :sent 0
+         :error (str error)}))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Exporter 관리
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Span 큐에 추가
+(defn add-span-to-queue [exporter span]
+  "Add span to export queue"
+  (let [updated (update exporter :span-queue conj span)]
+    (if (>= (count (:span-queue updated)) (:batch-size updated))
+      (flush-spans updated)
+      updated)))
+
+; Span 배치 플러시 (전송)
+(defn flush-spans [exporter]
+  "Flush queued spans to Jaeger"
+  (if (empty? (:span-queue exporter))
+    exporter
+    (let [result (send-spans-to-jaeger exporter (:span-queue exporter))]
+      (if (:ok result)
+        (assoc exporter :span-queue [])
+        exporter))))
+
+; Exporter 시작 (주기적 플러시)
+(defn start-exporter [exporter]
+  "Start periodic flushing"
+  (let [interval-ms (:flush-interval-ms exporter)
+        flusher (set-interval
+          (fn [] (flush-spans exporter))
+          interval-ms)]
+    (assoc exporter :flusher flusher)))
+
+; Exporter 중지
+(defn stop-exporter [exporter]
+  "Stop periodic flushing and flush remaining spans"
+  (when (:flusher exporter)
+    (clear-interval (:flusher exporter)))
+  (flush-spans (assoc exporter :flusher nil)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. 통합: Tracing + Jaeger
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 전역 exporter
+(def global-jaeger-exporter (atom nil))
+
+; Jaeger exporter 초기화
+(defn init-jaeger [service-name &:key [options {}]]
+  "Initialize Jaeger exporter globally"
+  (let [exporter (create-jaeger-exporter service-name options)
+        started (start-exporter exporter)]
+    (reset! global-jaeger-exporter started)
+    started))
+
+; Span을 Jaeger로 자동 전송
+(defn export-span-to-jaeger [span]
+  "Automatically export finished span to Jaeger"
+  (when @global-jaeger-exporter
+    (when (and (not (nil? (:end-time span))) (:sampled span))
+      (swap! global-jaeger-exporter add-span-to-queue span))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Jaeger Query 유틸리티
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Trace 조회 (by trace ID)
+(defn query-trace [trace-id &:key [jaeger-host "localhost"] [jaeger-port 16686]]
+  "Query trace from Jaeger (requires HTTP API)"
+  (fl-try
+    (let [endpoint (str "http://" jaeger-host ":" jaeger-port "/api/traces/" trace-id)
+          response (http-get endpoint :timeout 5000)]
+      (if (< (:status response) 400)
+        {:ok true :trace (parse-json (:body response))}
+        {:ok false :error (:status response)}))
+    :on-error (fn [error]
+      {:ok false :error (str error)})))
+
+; Service 목록 조회
+(defn query-services [&:key [jaeger-host "localhost"] [jaeger-port 16686]]
+  "Query available services from Jaeger"
+  (fl-try
+    (let [endpoint (str "http://" jaeger-host ":" jaeger-port "/api/services")
+          response (http-get endpoint :timeout 5000)]
+      (if (< (:status response) 400)
+        {:ok true :services (get (parse-json (:body response)) :data [])}
+        {:ok false :error (:status response)}))
+    :on-error (fn [error]
+      {:ok false :error (str error)})))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 7. Trace 분석 유틸리티
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Critical path 찾기 (가장 느린 경로)
+(defn find-critical-path [spans]
+  "Find slowest path through spans"
+  (let [sorted (sort-by :duration-ms > spans)]
+    (take 5 sorted)))
+
+; Span 깊이 계산
+(defn calculate-span-depth [span all-spans]
+  "Calculate span depth in hierarchy"
+  (let [parent-id (:parent-span-id span)
+        parent (first (filter (fn [s] (= (:span-id s) parent-id)) all-spans))]
+    (if (nil? parent) 0 (inc (calculate-span-depth parent all-spans)))))
+
+; Service 간 호출 추적
+(defn trace-service-calls [spans]
+  "Extract service-to-service calls"
+  (filter-map (fn [span]
+    (if-let [service (:service span)]
+      {:from-service service
+       :to-service (:target-service span)
+       :latency-ms (:duration-ms span)}
+      nil))
+    spans))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Jaeger Exporter (Phase 153) loaded")
