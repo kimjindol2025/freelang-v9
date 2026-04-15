@@ -1,0 +1,21 @@
+; Phase 206: Transformer Architecture
+(defn positional-encoding [seq-len d-model]
+  "Positional encoding"
+  (vec (map (fn [pos]
+    (vec (map (fn [i]
+      (if (even? i)
+        (Math/sin (/ pos (Math/pow 10000 (/ i d-model))))
+        (Math/cos (/ pos (Math/pow 10000 (/ (- i 1) d-model))))))
+    (range d-model))))
+  (range seq-len))))
+
+(defn transformer-encoder [input num-layers num-heads d-model]
+  "Transformer encoder"
+  (loop [output input layer 0]
+    (if (< layer num-layers)
+      (let [attention-out (multi-head-attention [output] [output] [output] num-heads)
+            ffn-out (vec (map (fn [x] (+ (* x 0.5) 0.1)) attention-out))]
+        (recur ffn-out (inc layer)))
+      output)))
+
+(print "✓ Transformer (Phase 206) loaded")

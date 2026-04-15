@@ -1,0 +1,17 @@
+; Phase 210: Semantic Segmentation
+(defn upsampling [feature-map scale-factor]
+  "Upsample feature map"
+  (let [h (count feature-map) w (count (first feature-map))]
+    (vec (mapcat (fn [row]
+      (let [expanded-row (vec (mapcat (fn [x] (repeat scale-factor x)) row))]
+        (repeat scale-factor expanded-row)))
+    feature-map))))
+
+(defn fcn-decode [encoder-features]
+  "Fully Convolutional Network decoder"
+  (loop [features encoder-features scale 2]
+    (if (> scale 32)
+      features
+      (recur (upsampling features 2) (* scale 2)))))
+
+(print "✓ Semantic Segmentation (Phase 210) loaded")

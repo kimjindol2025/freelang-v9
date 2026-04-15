@@ -1,0 +1,25 @@
+; Phase 217: Text Generation
+(defn generate-text [model seed-tokens max-length temperature]
+  "Generate text from model"
+  (loop [tokens seed-tokens]
+    (if (>= (count tokens) max-length)
+      tokens
+      (let [logits (model tokens)
+            probs (map (fn [x] (Math/exp (/ x temperature))) logits)
+            normalized (map (fn [p] (/ p (reduce + probs))) probs)]
+        (recur (conj tokens (apply max-key (fn [i] (nth normalized i)) (range (count normalized)))))))))
+
+(defn beam-search [model seed-tokens beam-width max-length]
+  "Beam search for text generation"
+  (let [beams (atom [[seed-tokens 0]])]
+    (dotimes [step max-length]
+      (let [new-beams (atom [])]
+        (doseq [[tokens score] @beams]
+          (let [logits (model tokens)
+                top-k (take beam-width (sort-by (fn [i] (- (nth logits i))) (range (count logits))))]
+            (doseq [k top-k]
+              (swap! new-beams conj [(conj tokens k) (+ score (nth logits k))]))))
+        (reset! beams (take beam-width (sort-by (fn [x] (- (second x))) @new-beams)))))
+    (first (first @beams))))
+
+(print "✓ Text Generation (Phase 217) loaded")

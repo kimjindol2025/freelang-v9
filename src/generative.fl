@@ -1,0 +1,21 @@
+; Phase 208: Generative Models (VAE, GAN)
+(defn encode [input encoder-weights]
+  "Encode input to latent space"
+  (let [mean (reduce + (map * input (take (quot (count encoder-weights) 2) encoder-weights)))
+        logvar (reduce + (map * input (drop (quot (count encoder-weights) 2) encoder-weights)))]
+    {:mean mean :logvar logvar}))
+
+(defn reparameterize [mean logvar]
+  "Reparameterization trick"
+  (let [std (Math/exp (/ logvar 2))
+        epsilon (rand)
+        z (+ mean (* std epsilon))]
+    z))
+
+(defn gan-discriminator [fake-data real-data weights]
+  "GAN discriminator"
+  (let [fake-score (reduce + (map * (flatten fake-data) weights))
+        real-score (reduce + (map * (flatten real-data) weights))]
+    {:fake-score fake-score :real-score real-score}))
+
+(print "✓ Generative Models (Phase 208) loaded")

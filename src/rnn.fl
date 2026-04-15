@@ -1,0 +1,22 @@
+; Phase 202: RNN - Recurrent Neural Networks
+(defn tanh-activation [x]
+  "Tanh activation"
+  (/ (- (Math/exp (* 2 x)) 1) (+ (Math/exp (* 2 x)) 1)))
+
+(defn rnn-cell [input hidden-state weights bias]
+  "Single RNN cell"
+  (let [combined (concat input hidden-state)
+        raw-output (reduce + (map * combined weights))
+        output (tanh-activation (+ raw-output bias))]
+    output))
+
+(defn rnn-forward [sequence hidden-state weights bias]
+  "Forward pass through RNN"
+  (let [outputs (atom [])]
+    (doseq [x sequence]
+      (let [hidden (rnn-cell x hidden-state weights bias)]
+        (swap! outputs conj hidden)
+        (reset! hidden-state hidden)))
+    @outputs))
+
+(print "✓ RNN (Phase 202) loaded")

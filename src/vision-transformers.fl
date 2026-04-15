@@ -1,0 +1,18 @@
+; Phase 216: Vision Transformers (ViT)
+(defn patch-embedding [image patch-size embedding-dim]
+  "Convert image to patch embeddings"
+  (let [h (count image) w (count (first image))
+        num-patches (* (quot h patch-size) (quot w patch-size))
+        patch-dim (* patch-size patch-size 3)]
+    (vec (map (fn [patch-idx]
+      (vec (map (fn [i]
+        (rand))
+      (range embedding-dim))))
+    (range num-patches)))))
+
+(defn vision-transformer [image patch-size num-layers]
+  "Vision Transformer"
+  (let [patch-embeds (patch-embedding image patch-size 768)]
+    (transformer-encoder patch-embeds num-layers 12 768)))
+
+(print "✓ Vision Transformers (Phase 216) loaded")

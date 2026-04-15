@@ -1,0 +1,15 @@
+; Phase 211: Reinforcement Learning - Q-Learning
+(defn q-learning [state action reward next-state alpha gamma]
+  "Q-learning update"
+  (let [q-current (get state [action] 0)
+        q-next (apply max (vals next-state))
+        q-new (+ q-current (* alpha (+ reward (* gamma q-next) (- q-current))))]
+    (assoc state action q-new)))
+
+(defn epsilon-greedy [q-table epsilon]
+  "Epsilon-greedy action selection"
+  (if (< (rand) epsilon)
+    (rand-int (count q-table))
+    (apply max-key (fn [a] (get q-table a 0)) (range (count q-table)))))
+
+(print "✓ RL Q-Learning (Phase 211) loaded")

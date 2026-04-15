@@ -1,0 +1,17 @@
+; Phase 203: LSTM - Long Short-Term Memory
+(defn sigmoid-gate [x]
+  "Sigmoid for gates"
+  (/ 1 (+ 1 (Math/exp (- x)))))
+
+(defn lstm-cell [input cell-state hidden weights]
+  "LSTM cell computation"
+  (let [combined (concat input hidden)
+        forget-gate (sigmoid-gate (reduce + (map * (take (quot (count combined) 4) combined) weights)))
+        input-gate (sigmoid-gate (reduce + (map * (take (quot (count combined) 4) combined) weights)))
+        cell-candidate (tanh-activation (reduce + (map * (take (quot (count combined) 4) combined) weights)))
+        output-gate (sigmoid-gate (reduce + (map * (take (quot (count combined) 4) combined) weights)))
+        new-cell (+ (* forget-gate cell-state) (* input-gate cell-candidate))
+        new-hidden (* output-gate (tanh-activation new-cell))]
+    {:cell new-cell :hidden new-hidden}))
+
+(print "✓ LSTM (Phase 203) loaded")

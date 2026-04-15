@@ -1,0 +1,36 @@
+; Phase 201: CNN - Convolutional Neural Networks
+(defn conv2d [image kernel stride padding]
+  "2D Convolution operation"
+  (let [h (count image) w (count (first image))
+        kh (count kernel) kw (count (first kernel))
+        out-h (+ (quot (- h kh stride) stride) 1)
+        out-w (+ (quot (- w kw stride) stride) 1)
+        output (atom [])]
+    (doseq [y (range out-h)]
+      (doseq [x (range out-w)]
+        (let [sum (atom 0)]
+          (doseq [ky (range kh) kx (range kw)]
+            (let [iy (+ (* y stride) ky) ix (+ (* x stride) kx)]
+              (if (and (< iy h) (< ix w))
+                (swap! sum + (* (nth (nth image iy) ix) (nth (nth kernel ky) kx))))))
+          (swap! output conj @sum))))
+    output))
+
+(defn max-pooling [image pool-size stride]
+  "Max pooling operation"
+  (let [h (count image) w (count (first image))
+        out-h (quot (- h pool-size) stride)
+        out-w (quot (- w pool-size) stride)
+        output (atom [])]
+    (doseq [y (range out-h)]
+      (doseq [x (range out-w)]
+        (let [patch (atom [])
+              max-val (atom 0)]
+          (doseq [py (range pool-size) px (range pool-size)]
+            (let [iy (+ (* y stride) py) ix (+ (* x stride) px)]
+              (if (and (< iy h) (< ix w))
+                (reset! max-val (max @max-val (nth (nth image iy) ix))))))
+          (swap! output conj @max-val))))
+    output))
+
+(print "✓ CNN (Phase 201) loaded")

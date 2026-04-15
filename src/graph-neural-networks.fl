@@ -1,0 +1,25 @@
+; Phase 214: Graph Neural Networks (GNN)
+(defn gnn-aggregation [node neighbors aggregation-fn]
+  "Aggregate neighbor features"
+  (let [neighbor-features (map (fn [n] (:feature n)) neighbors)]
+    (aggregation-fn neighbor-features)))
+
+(defn gnn-update [node aggregated-features]
+  "Update node with aggregated features"
+  (let [combined (concat (:feature node) aggregated-features)
+        new-feature (map (fn [x] (+ (* x 0.5) 0.2)) combined)]
+    (assoc node :feature new-feature)))
+
+(defn gnn-forward [graph num-iterations]
+  "GNN forward pass"
+  (loop [iter 0 nodes (:nodes graph)]
+    (if (< iter num-iterations)
+      (let [updated-nodes (map (fn [node]
+        (let [neighbors (filter (fn [n] (contains? (:edges node) (:id n))) (:nodes graph))
+              aggregated (gnn-aggregation node neighbors (fn [fs] (reduce + fs)))]
+          (gnn-update node aggregated)))
+      nodes)]
+        (recur (inc iter) updated-nodes))
+      nodes)))
+
+(print "✓ Graph Neural Networks (Phase 214) loaded")

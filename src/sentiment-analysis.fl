@@ -1,0 +1,16 @@
+; Phase 219: Sentiment Analysis
+(defn sentiment-classifier [text model vocab]
+  "Classify sentiment of text"
+  (let [tokens (tokenize-text text (count vocab))
+        embeddings (vec (map (fn [t] (nth vocab t)) tokens))
+        logits (model embeddings)
+        sentiment (apply max-key (fn [i] (nth logits i)) (range (count logits)))]
+    {:class sentiment :confidence (nth logits sentiment)}))
+
+(defn aspect-sentiment [text aspects model]
+  "Aspect-based sentiment analysis"
+  (reduce (fn [result aspect]
+    (assoc result aspect (sentiment-classifier text model [])))
+  {} aspects))
+
+(print "✓ Sentiment Analysis (Phase 219) loaded")

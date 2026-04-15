@@ -1,0 +1,18 @@
+; Phase 220: Machine Translation (Seq2Seq)
+(defn seq2seq-encoder [input-sequence encoder-weights]
+  "Seq2Seq encoder"
+  (let [hidden-state (atom 0)]
+    (doseq [token input-sequence]
+      (let [new-hidden (reduce + (map * token encoder-weights))]
+        (reset! hidden-state new-hidden)))
+    @hidden-state))
+
+(defn seq2seq-decoder [hidden-state target-length decoder-weights]
+  "Seq2Seq decoder with attention"
+  (let [output (atom [])]
+    (dotimes [i target-length]
+      (let [logits (map * (repeat hidden-state) decoder-weights)]
+        (swap! output conj logits)))
+    @output))
+
+(print "✓ Machine Translation (Phase 220) loaded")

@@ -1,0 +1,9 @@
+; Phase 222: Relation Extraction
+(defn relation-classifier [entity1 entity2 context model]
+  "Classify relation between entities"
+  (let [features (concat entity1 entity2 context)
+        logits (model features)
+        relation (apply max-key (fn [i] (nth logits i)) (range (count logits)))]
+    {:relation relation :confidence (nth logits relation)}))
+
+(print "✓ Relation Extraction (Phase 222) loaded")

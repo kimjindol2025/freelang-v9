@@ -1,0 +1,23 @@
+; Phase 209: Object Detection (YOLO, R-CNN)
+(defn anchor-boxes [grid-size scales aspect-ratios]
+  "Generate anchor boxes"
+  (let [boxes (atom [])]
+    (doseq [scale scales]
+      (doseq [ratio aspect-ratios]
+        (let [w (* scale (Math/sqrt ratio))
+              h (/ scale (Math/sqrt ratio))]
+          (swap! boxes conj {:w w :h h}))))
+    @boxes))
+
+(defn iou [box1 box2]
+  "Intersection over Union"
+  (let [x1-min (:x box1) x1-max (+ (:x box1) (:w box1))
+        y1-min (:y box1) y1-max (+ (:y box1) (:h box1))
+        x2-min (:x box2) x2-max (+ (:x box2) (:w box2))
+        y2-min (:y box2) y2-max (+ (:y box2) (:h box2))
+        inter-area (* (max 0 (- (min x1-max x2-max) (max x1-min x2-min)))
+                      (max 0 (- (min y1-max y2-max) (max y1-min y2-min))))
+        union-area (+ (* (:w box1) (:h box1)) (* (:w box2) (:h box2)) (- inter-area))]
+    (/ inter-area union-area)))
+
+(print "✓ Object Detection (Phase 209) loaded")

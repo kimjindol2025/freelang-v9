@@ -1,0 +1,24 @@
+; Phase 205: Attention Mechanism
+(defn scaled-dot-product-attention [query key value]
+  "Scaled dot-product attention"
+  (let [scores (reduce + (map * query key))
+        scale (/ 1 (Math/sqrt (count query)))
+        scaled-scores (* scores scale)
+        softmax-scores (/ (Math/exp scaled-scores) (+ (Math/exp scaled-scores) 1))
+        output (reduce + (map * softmax-scores value))]
+    output))
+
+(defn multi-head-attention [queries keys values num-heads]
+  "Multi-head attention"
+  (let [head-dim (quot (count (first queries)) num-heads)
+        outputs (atom [])]
+    (doseq [h (range num-heads)]
+      (doseq [q queries]
+        (let [q-head (subvec (vec q) (* h head-dim) (* (+ h 1) head-dim))
+              k-head (subvec (vec (first keys)) (* h head-dim) (* (+ h 1) head-dim))
+              v-head (subvec (vec (first values)) (* h head-dim) (* (+ h 1) head-dim))
+              attn (scaled-dot-product-attention q-head k-head v-head)]
+          (swap! outputs conj attn))))
+    @outputs))
+
+(print "✓ Attention (Phase 205) loaded")

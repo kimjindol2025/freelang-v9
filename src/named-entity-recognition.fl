@@ -1,0 +1,15 @@
+; Phase 221: Named Entity Recognition
+(defn ner-tagger [tokens model]
+  "Tag named entities"
+  (map (fn [token]
+    (let [logits (model token)
+          tag (apply max-key (fn [i] (nth logits i)) (range (count logits)))]
+      {:token token :tag tag}))
+  tokens))
+
+(defn ner-sequence [sentence model]
+  "Full NER pipeline"
+  (let [tokens (tokenize-text sentence 5000)]
+    (ner-tagger tokens model)))
+
+(print "✓ Named Entity Recognition (Phase 221) loaded")

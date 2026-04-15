@@ -1,0 +1,17 @@
+; Phase 215: NLP with Transformers
+(defn tokenize-text [text vocab-size]
+  "Tokenize text"
+  (let [tokens (clojure.string/split text #"\s+")]
+    (map (fn [token]
+      (mod (reduce + (map int (str token))) vocab-size))
+    tokens)))
+
+(defn bert-embedding [token-ids embedding-dim]
+  "BERT token embedding"
+  (vec (map (fn [token-id]
+    (vec (map (fn [i]
+      (Math/sin (/ token-id (Math/pow 10000 (/ i embedding-dim)))))
+    (range embedding-dim))))
+  token-ids)))
+
+(print "✓ NLP Transformers (Phase 215) loaded")

@@ -1,0 +1,15 @@
+; Phase 218: Question Answering Systems
+(defn answer-extraction [context question model]
+  "Extract answer span from context"
+  (let [scores (model context question)
+        start-idx (apply max-key (fn [i] (nth scores i)) (range (quot (count scores) 2)))
+        end-idx (apply max-key (fn [i] (nth scores (+ i (quot (count scores) 2)))) (range (quot (count scores) 2)))]
+    (subs context start-idx (min (count context) end-idx))))
+
+(defn retrieval-augmented-qa [question documents model retriever]
+  "Retrieval-augmented QA"
+  (let [relevant-docs (retriever question documents)
+        answers (map (fn [doc] (answer-extraction doc question model)) relevant-docs)]
+    (first (sort-by (fn [a] (- (count a))) answers))))
+
+(print "✓ Question Answering (Phase 218) loaded")

@@ -1,0 +1,10 @@
+; Phase 204: GRU - Gated Recurrent Unit
+(defn gru-cell [input hidden weights]
+  "GRU cell"
+  (let [reset-gate (sigmoid-gate (reduce + (map * input weights)))
+        update-gate (sigmoid-gate (reduce + (map * input weights)))
+        candidate (tanh-activation (reduce + (map * input weights)))
+        new-hidden (+ (* (- 1 update-gate) hidden) (* update-gate candidate))]
+    new-hidden))
+
+(print "✓ GRU (Phase 204) loaded")
