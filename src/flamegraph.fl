@@ -1,0 +1,212 @@
+; ============================================================================
+; FreeLang v9 — Phase 154: Flame Graph Generator
+; 성능 프로파일을 Flame Graph로 시각화
+; ============================================================================
+
+(load "src/profiler.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Stack Trace Processing
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 스택 프레임 정규화
+(defn normalize-frame [frame]
+  "Normalize stack frame format"
+  (let [parts (str-split frame ";")
+        func-name (or (first parts) "unknown")
+        file (or (nth parts 1) "?")
+        line (or (nth parts 2) "?")]
+    (str func-name " (" file ":" line ")")))
+
+; 스택 집계
+(defn aggregate-stacks [stack-samples]
+  "Aggregate call stacks by frequency"
+  (let [stack-counts (atom {})]
+    (doseq [sample stack-samples]
+      (let [stack-key (str-join ";" (:stack sample))]
+        (swap! stack-counts update stack-key inc)))
+    @stack-counts))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Flame Graph SVG Generation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Flame Graph 생성 (SVG)
+(defn generate-flame-graph-svg [stack-samples &:key [width 1200] [height 600]]
+  "Generate Flame Graph SVG from stack samples"
+  (let [aggregated (aggregate-stacks stack-samples)
+        total-samples (apply + (vals aggregated))
+        x-scale (/ width total-samples)
+        y-scale 20 ; pixels per stack depth
+
+        svg-header (str
+          "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+          "<svg width=\"" width "\" height=\"" height "\" xmlns=\"http://www.w3.org/2000/svg\">\n"
+          "<style>\n"
+          ".frame { font-size: 12px; font-family: monospace; }\n"
+          ".func { cursor: pointer; }\n"
+          "</style>\n")
+
+        svg-footer "</svg>"]
+
+    (str svg-header
+         (generate-frame-rects aggregated x-scale y-scale)
+         svg-footer)))
+
+; 프레임 사각형 생성
+(defn generate-frame-rects [aggregated x-scale y-scale]
+  "Generate SVG rectangles for each frame"
+  (let [colors (fn [i] (case (mod i 5)
+                         0 "#ff6b6b" 1 "#4ecdc4" 2 "#45b7d1"
+                         3 "#f9ca24" 4 "#6c5ce7"))]
+
+    (apply str
+      (map-indexed (fn [i [stack count]]
+        (let [x (* count x-scale)
+              y (* (count (str-split stack ";")) y-scale)
+              width (* count x-scale)
+              height y-scale
+              func-name (last (str-split stack ";"))
+              color (colors i)]
+
+          (str "<g class=\"func\" onclick=\"alert('Function: " func-name "')\">\\n"
+               "  <rect x=\"" x "\" y=\"" y "\" width=\"" width "\" height=\"" height "\""
+               " fill=\"" color "\" stroke=\"white\" stroke-width=\"1\"/>\n"
+               "  <text x=\"" (+ x 5) "\" y=\"" (+ y 15) "\" class=\"frame\">"
+               func-name "</text>\n"
+               "</g>\n")))
+        aggregated))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. HTML Report Generation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; HTML 성능 보고서 생성
+(defn generate-html-report [profiles output-file]
+  "Generate HTML performance report"
+  (let [report (generate-performance-report profiles)
+        html (str
+          "<!DOCTYPE html>\n"
+          "<html>\n"
+          "<head>\n"
+          "  <title>Performance Profile Report</title>\n"
+          "  <style>\n"
+          "    body { font-family: sans-serif; margin: 20px; }\n"
+          "    table { border-collapse: collapse; width: 100%; }\n"
+          "    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }\n"
+          "    th { background-color: #4CAF50; color: white; }\n"
+          "    .hotspot { background-color: #ffcccc; }\n"
+          "  </style>\n"
+          "</head>\n"
+          "<body>\n"
+          "  <h1>Performance Profile Report</h1>\n"
+          "  <h2>Summary</h2>\n"
+          "  <p>Total Execution: " (:total-execution-ms report) " ms</p>\n"
+          "  <p>Total Iterations: " (:total-iterations report) " </p>\n"
+          "  <h2>Hotspots</h2>\n"
+          "  <table>\n"
+          "    <tr><th>Function</th><th>Avg (ms)</th><th>Time %</th></tr>\n"
+          (apply str (map (fn [h]
+            (str "    <tr class=\"hotspot\">"
+                 "<td>" (:function-name h) "</td>"
+                 "<td>" (Math/round (* 100 (:avg-ms h)) 100) "</td>"
+                 "<td>" (Math/round (* 100 (:time-percentage h)) 100) "%</td>"
+                 "</tr>\n"))
+            (:hotspots report)))
+          "  </table>\n"
+          "</body>\n"
+          "</html>")]
+
+    (write-file output-file html)
+    {:ok true :file output-file}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. JSON Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+; JSON으로 내보내기
+(defn export-profile-json [profiles output-file]
+  "Export profile data as JSON"
+  (let [json-data (to-json {:profiles profiles
+                            :report (generate-performance-report profiles)
+                            :timestamp (now)})]
+    (write-file output-file json-data)
+    {:ok true :file output-file}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Benchmark Comparison
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 벤치마크 비교 시각화
+(defn visualize-benchmark-comparison [comparisons output-file]
+  "Create HTML comparison chart"
+  (let [html (str
+          "<!DOCTYPE html>\n"
+          "<html>\n"
+          "<head>\n"
+          "  <title>Benchmark Comparison</title>\n"
+          "  <script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n"
+          "</head>\n"
+          "<body>\n"
+          "  <h1>Benchmark Comparison</h1>\n"
+          "  <canvas id=\"myChart\"></canvas>\n"
+          "  <script>\n"
+          "    const ctx = document.getElementById('myChart').getContext('2d');\n"
+          "    new Chart(ctx, {\n"
+          "      type: 'bar',\n"
+          "      data: {\n"
+          "        labels: " (to-json (map :name comparisons)) ",\n"
+          "        datasets: [{\n"
+          "          label: 'Execution Time (ms)',\n"
+          "          data: " (to-json (map :avg-ms comparisons)) ",\n"
+          "          backgroundColor: '#4CAF50'\n"
+          "        }]\n"
+          "      }\n"
+          "    });\n"
+          "  </script>\n"
+          "</body>\n"
+          "</html>")]
+    (write-file output-file html)
+    {:ok true :file output-file}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Performance Report Builder
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 통합 성능 보고서 빌더
+(defn build-performance-report [profiles
+                               &:key
+                               [output-dir "profile-results"]
+                               [include-html true]
+                               [include-json true]
+                               [include-flamegraph true]]
+
+  (do
+    (create-directory output-dir)
+
+    (let [results {:html nil :json nil :flamegraph nil}]
+
+      (when include-html
+        (let [html-result (generate-html-report profiles
+          (str output-dir "/report.html"))]
+          (assoc results :html html-result)))
+
+      (when include-json
+        (let [json-result (export-profile-json profiles
+          (str output-dir "/profile.json"))]
+          (assoc results :json json-result)))
+
+      (when include-flamegraph
+        (let [svg-result (generate-flame-graph-svg profiles)]
+          (write-file (str output-dir "/flamegraph.svg") svg-result)
+          (assoc results :flamegraph {:ok true :file (str output-dir "/flamegraph.svg")})))
+
+      {:ok true
+       :report-dir output-dir
+       :files results})))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Flame Graph Generator (Phase 154) loaded")
