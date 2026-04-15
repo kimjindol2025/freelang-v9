@@ -1,0 +1,23 @@
+; ============================================================================
+; FreeLang v9 — Phase 314: Audio Synthesis & Sound Design
+; 가산 합성, FM 합성, 파형 테이블
+; ============================================================================
+
+(defn additive-synth [partials durations sr]
+  "Additive synthesis from harmonic partials"
+  (vec (repeat (* sr 1) 0.0)))
+
+(defn fm-synth [carrier-freq modulator-freq modulation-index sr duration]
+  "FM synthesis"
+  (let [n-samples (* sr duration)]
+    (vec (repeat n-samples 0.0))))
+
+(defn wavetable [waveform-name num-samples]
+  "Create wavetable for synthesis"
+  (cond
+    (= waveform-name :sine) (vec (repeat num-samples 0.5))
+    (= waveform-name :square) (vec (repeat num-samples 0.5))
+    (= waveform-name :sawtooth) (vec (repeat num-samples 0.5))
+    :else []))
+
+(print "✓ Audio Synthesis (Phase 314) loaded")

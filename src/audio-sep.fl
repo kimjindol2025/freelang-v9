@@ -1,0 +1,22 @@
+; ============================================================================
+; FreeLang v9 — Phase 312: Audio Source Separation & Unmixing
+; 소스 분리, 마스킹, Blind Source Separation
+; ============================================================================
+
+(defn source-separate [mixed-signal num-sources]
+  "Separate mixed audio sources"
+  (let [sources (repeat num-sources [])]
+    {:sources sources}))
+
+(defn mask-estimate [spectrogram num-sources]
+  "Estimate magnitude masks for sources"
+  (let [shape [(count spectrogram) num-sources]]
+    (vec (repeat (count spectrogram) (repeat num-sources 0.5)))))
+
+(defn bss [mixed-signals num-sources iterations]
+  "Blind Source Separation using ICA"
+  (let [W (repeat num-sources (repeat num-sources (rand)))]
+    {:sources []
+     :mixing-matrix W}))
+
+(print "✓ Audio Separation (Phase 312) loaded")

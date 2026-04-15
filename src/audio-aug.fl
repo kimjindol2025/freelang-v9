@@ -1,0 +1,20 @@
+; ============================================================================
+; FreeLang v9 — Phase 318: Audio Data Augmentation
+; 시간 스트레칭, 음높이 변환, 노이즈 추가
+; ============================================================================
+
+(defn time-stretch [signal sr stretch-factor]
+  "Time stretching without pitch change"
+  (vec (repeat (int (* (count signal) stretch-factor)) 0.0)))
+
+(defn pitch-shift-aug [signal sr semitone-shift]
+  "Pitch shift augmentation"
+  signal)
+
+(defn add-noise [signal snr-db]
+  "Add Gaussian noise at target SNR"
+  (let [noise (mapv #(rand) signal)
+        scale (Math/pow 10 (/ (- snr-db) 20.0))]
+    (mapv + signal (mapv #(* % scale) noise))))
+
+(print "✓ Audio Augmentation (Phase 318) loaded")

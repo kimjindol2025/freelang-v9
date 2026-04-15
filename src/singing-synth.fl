@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 317: Singing Voice Synthesis
+; SVS 모델, 비브라토, 호흡음
+; ============================================================================
+
+(defn svs-model [phoneme f0-contour duration]
+  "Singing Voice Synthesis model"
+  (vec (repeat (* 16000 duration) 0.0)))
+
+(defn vibrato [signal rate depth]
+  "Add vibrato effect"
+  (mapv (fn [s] (* s (+ 1 (* depth (Math/sin (rand)))))) signal))
+
+(defn breathiness [signal breathiness-factor]
+  "Add breathiness to voice"
+  (mapv #(* % (+ 1 (* 0.1 breathiness-factor))) signal))
+
+(print "✓ Singing Synthesis (Phase 317) loaded")

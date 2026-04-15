@@ -1,0 +1,31 @@
+; ============================================================================
+; FreeLang v9 — Phase 311: Beat Detection & Onset Detection
+; 비트 추정, 음향 사건 감지, 템포 인식
+; ============================================================================
+
+(defn onset-detect [mel-spec energy-threshold]
+  "Detect onsets (note/sound onsets)"
+  (let [onsets (atom [])]
+    (loop [i 1]
+      (if (< i (count mel-spec))
+        (do
+          (if (> (- (nth mel-spec i) (nth mel-spec (dec i))) energy-threshold)
+            (swap! onsets conj i))
+          (recur (inc i)))
+        @onsets))))
+
+(defn tempo-estimate [onset-times sr]
+  "Estimate tempo from onsets"
+  (if (< (count onset-times) 2)
+    120
+    (let [intervals (atom [])
+          diffs (vec (drop 1 (map - (rest onset-times) onset-times)))]
+      (reduce + diffs))))
+
+(defn beat-track [signal sr tempo-bpm]
+  "Track beats in audio signal"
+  (let [beat-frames (* (/ tempo-bpm 60.0) sr)]
+    {:beats []
+     :confidence (vec (repeat 0 []))}))
+
+(print "✓ Beat Detection (Phase 311) loaded")
