@@ -1,0 +1,151 @@
+; ============================================================================
+; FreeLang v9 — Phase 162: Heap Operations & Priority Queue
+; 우선순위 큐, K개 최대값, 병합
+; ============================================================================
+
+(load "src/heap-structure.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Priority Queue Implementation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 우선순위 큐 생성
+(defn pq-create [&:key [type :min]]
+  "Create priority queue"
+  {:type :pq
+   :heap (create-heap :type type)})
+
+; 우선순위 큐에 요소 추가 (값, 우선순위)
+(defn pq-enqueue [pq value priority]
+  "Add element with priority to queue"
+  (heap-insert (:heap pq) [value priority])
+  pq)
+
+; 우선순위 큐에서 최고 우선순위 요소 추출
+(defn pq-dequeue [pq]
+  "Remove highest priority element"
+  (let [result (heap-extract (:heap pq))]
+    (if (nil? result) nil (first result))))
+
+; 우선순위 큐 피크
+(defn pq-peek [pq]
+  "Peek at highest priority element"
+  (let [result (heap-peek (:heap pq))]
+    (if (nil? result) nil (first result))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Heap Sorting
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 힙 정렬
+(defn heap-sort [arr &:key [type :asc]]
+  "Sort array using heap sort"
+  (let [heap-type (if (= type :asc) :max :min)
+        heap (build-heap arr :type heap-type)
+        result (atom [])]
+    (loop []
+      (if (not (heap-empty? heap))
+        (do
+          (swap! result conj (heap-extract heap))
+          (recur))
+        @result))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. K-way Operations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; K개의 최대값 찾기
+(defn find-k-largest [arr k]
+  "Find k largest elements"
+  (if (>= k (count arr))
+    (sort arr >)
+    (let [heap (build-heap (take k arr) :type :min)]
+      (doseq [i (range k (count arr))]
+        (let [val (nth arr i)]
+          (if (> val (heap-peek heap))
+            (do
+              (heap-extract heap)
+              (heap-insert heap val)))))
+      (let [result (atom [])]
+        (loop []
+          (if (not (heap-empty? heap))
+            (do
+              (swap! result conj (heap-extract heap))
+              (recur))
+            (reverse @result)))))))
+
+; K개의 최소값 찾기
+(defn find-k-smallest [arr k]
+  "Find k smallest elements"
+  (if (>= k (count arr))
+    (sort arr)
+    (let [heap (build-heap (take k arr) :type :max)]
+      (doseq [i (range k (count arr))]
+        (let [val (nth arr i)]
+          (if (< val (heap-peek heap))
+            (do
+              (heap-extract heap)
+              (heap-insert heap val)))))
+      (let [result (atom [])]
+        (loop []
+          (if (not (heap-empty? heap))
+            (do
+              (swap! result conj (heap-extract heap))
+              (recur))
+            @result))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Advanced Heap Operations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 중간값 찾기 (최소/최대 힙 사용)
+(defn find-median [stream]
+  "Find median of stream"
+  (let [max-heap (create-heap :type :max)
+        min-heap (create-heap :type :min)]
+    (doseq [val stream]
+      (if (or (heap-empty? max-heap) (<= val (heap-peek max-heap)))
+        (heap-insert max-heap val)
+        (heap-insert min-heap val))
+      ; 크기 균형 유지
+      (if (> (heap-size max-heap) (inc (heap-size min-heap)))
+        (do
+          (let [v (heap-extract max-heap)]
+            (heap-insert min-heap v)))))
+    (if (= (heap-size max-heap) (heap-size min-heap))
+      (/ (+ (heap-peek max-heap) (heap-peek min-heap)) 2)
+      (heap-peek max-heap))))
+
+; 두 힙 병합
+(defn merge-heaps [heap1 heap2]
+  "Merge two heaps"
+  (let [result (create-heap :type (:heap-type heap1))]
+    (doseq [val @(:data heap1)]
+      (heap-insert result val))
+    (doseq [val @(:data heap2)]
+      (heap-insert result val))
+    result))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Heap Statistics
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 힙 높이
+(defn heap-height [heap]
+  "Get heap height"
+  (let [n (heap-size heap)]
+    (if (= n 0)
+      0
+      (inc (quot (Math/log n) (Math/log 2))))))
+
+; 리프 노드 개수
+(defn heap-leaf-count [heap]
+  "Count leaf nodes"
+  (let [n (heap-size heap)]
+    (quot (inc n) 2)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Heap Operations (Phase 162) loaded")

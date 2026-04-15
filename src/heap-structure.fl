@@ -1,0 +1,196 @@
+; ============================================================================
+; FreeLang v9 — Phase 162: Heap & Priority Queue
+; 최소힙, 최대힙, 우선순위 큐
+; ============================================================================
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Heap Representation & Basic Operations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 힙 생성
+(defn create-heap [&:key [type :min]]
+  "Create an empty heap (min or max)"
+  {:type :heap
+   :heap-type type
+   :data (atom [])})
+
+; 부모 인덱스
+(defn parent-idx [i]
+  "Get parent index"
+  (quot (dec i) 2))
+
+; 왼쪽 자식 인덱스
+(defn left-child-idx [i]
+  "Get left child index"
+  (+ (* i 2) 1))
+
+; 오른쪽 자식 인덱스
+(defn right-child-idx [i]
+  "Get right child index"
+  (+ (* i 2) 2))
+
+; 힙에서 값 비교 (min 또는 max)
+(defn should-swap [heap val1 val2]
+  "Check if two values should be swapped"
+  (if (= (:heap-type heap) :min)
+    (> val1 val2)
+    (< val1 val2)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Heap Operations — Insert & Extract
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 힙에 값 삽입
+(defn heap-insert [heap value]
+  "Insert value into heap"
+  (let [data (:data heap)]
+    (swap! data conj value)
+    (let [idx (atom (dec (count @data)))]
+      (loop []
+        (if (> @idx 0)
+          (let [parent-i (parent-idx @idx)
+                parent-val (nth @data parent-i)
+                current-val (nth @data @idx)]
+            (if (should-swap heap parent-val current-val)
+              (do
+                (swap! data (fn [d]
+                  (let [d' (vec d)]
+                    (assoc d' @idx parent-val parent-i current-val))))
+                (reset! idx parent-i)
+                (recur))
+              nil))
+          nil)))
+    heap))
+
+; 힙에서 최소/최대값 추출
+(defn heap-extract [heap]
+  "Extract min/max from heap"
+  (let [data (:data heap)]
+    (if (empty? @data)
+      nil
+      (if (= (count @data) 1)
+        (let [result (first @data)]
+          (swap! data rest)
+          result)
+        (let [result (first @data)
+              last-val (last @data)]
+          (swap! data (fn [d] (vec (drop-last d))))
+          (swap! data (fn [d] (assoc d 0 last-val)))
+          ; Heapify down
+          (let [idx (atom 0)]
+            (loop []
+              (let [left-i (left-child-idx @idx)
+                    right-i (right-child-idx @idx)
+                    size (count @data)
+                    smallest (atom @idx)]
+                (if (and (< left-i size)
+                         (should-swap heap (nth @data @smallest) (nth @data left-i)))
+                  (reset! smallest left-i))
+                (if (and (< right-i size)
+                         (should-swap heap (nth @data @smallest) (nth @data right-i)))
+                  (reset! smallest right-i))
+                (if (not (= @smallest @idx))
+                  (do
+                    (swap! data (fn [d]
+                      (let [d' (vec d)]
+                        (assoc d' @idx (nth d' @smallest) @smallest (nth d' @idx)))))
+                    (reset! idx @smallest)
+                    (recur))
+                  nil))))
+          result)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Heap Building & Heapify
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 배열에서 힙 생성
+(defn build-heap [values &:key [type :min]]
+  "Build heap from array"
+  (let [heap (create-heap :type type)]
+    (doseq [v values]
+      (heap-insert heap v))
+    heap))
+
+; 배열을 힙으로 변환 (in-place)
+(defn heapify [arr &:key [type :min]]
+  "Convert array to heap"
+  (let [n (count arr)
+        data (atom (vec arr))]
+    (loop [i (quot (dec n) 2)]
+      (if (>= i 0)
+        (do
+          (let [idx (atom i)]
+            (loop []
+              (let [left-i (left-child-idx @idx)
+                    right-i (right-child-idx @idx)
+                    smallest (atom @idx)]
+                (if (and (< left-i n)
+                         (if (= type :min)
+                           (> (nth @data @smallest) (nth @data left-i))
+                           (< (nth @data @smallest) (nth @data left-i))))
+                  (reset! smallest left-i))
+                (if (and (< right-i n)
+                         (if (= type :min)
+                           (> (nth @data @smallest) (nth @data right-i))
+                           (< (nth @data @smallest) (nth @data right-i))))
+                  (reset! smallest right-i))
+                (if (not (= @smallest @idx))
+                  (do
+                    (swap! data (fn [d]
+                      (let [d' (vec d)]
+                        (assoc d' @idx (nth d' @smallest) @smallest (nth d' @idx)))))
+                    (reset! idx @smallest)
+                    (recur))
+                  nil))))
+          (recur (dec i)))
+        (create-heap :type type)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Heap Inspection
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 힙이 비어있는지 확인
+(defn heap-empty? [heap]
+  "Check if heap is empty"
+  (empty? @(:data heap)))
+
+; 힙의 크기
+(defn heap-size [heap]
+  "Get heap size"
+  (count @(:data heap)))
+
+; 힙의 최상위 값 (추출하지 않음)
+(defn heap-peek [heap]
+  "Peek at min/max without removing"
+  (let [data @(:data heap)]
+    (if (empty? data) nil (first data))))
+
+; 힙이 유효한지 확인
+(defn heap-valid? [heap]
+  "Check if heap satisfies heap property"
+  (let [data @(:data heap)
+        n (count data)]
+    (loop [i 0]
+      (if (>= i n)
+        true
+        (let [left-i (left-child-idx i)
+              right-i (right-child-idx i)
+              current (nth data i)
+              is-valid (atom true)]
+          (if (< left-i n)
+            (let [left-val (nth data left-i)]
+              (if (should-swap heap current left-val)
+                (reset! is-valid false))))
+          (if (< right-i n)
+            (let [right-val (nth data right-i)]
+              (if (should-swap heap current right-val)
+                (reset! is-valid false))))
+          (if @is-valid
+            (recur (inc i))
+            false))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Heap Structure (Phase 162) loaded")
