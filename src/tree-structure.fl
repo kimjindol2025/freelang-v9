@@ -1,0 +1,262 @@
+; ============================================================================
+; FreeLang v9 — Phase 161: Tree Structures & Traversal
+; 이진 트리, BST, 노드 생성 및 조작
+; ============================================================================
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Tree Node Representation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 트리 노드 생성
+(defn tree-node [value &:key [left nil right nil]]
+  "Create a tree node with value and optional children"
+  {:type :tree-node
+   :value value
+   :left left
+   :right right})
+
+; 노드 값 추출
+(defn node-value [node]
+  "Get value from node"
+  (if (nil? node) nil (:value node)))
+
+; 왼쪽 자식
+(defn node-left [node]
+  "Get left child"
+  (if (nil? node) nil (:left node)))
+
+; 오른쪽 자식
+(defn node-right [node]
+  "Get right child"
+  (if (nil? node) nil (:right node)))
+
+; 노드 업데이트
+(defn update-node-value [node value]
+  "Create new node with updated value"
+  (assoc node :value value))
+
+; 왼쪽 자식 설정
+(defn set-node-left [node left]
+  "Create new node with updated left child"
+  (assoc node :left left))
+
+; 오른쪽 자식 설정
+(defn set-node-right [node right]
+  "Create new node with updated right child"
+  (assoc node :right right))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Tree Creation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 균형 이진 트리 생성
+(defn create-balanced-tree [values]
+  "Create balanced binary tree from sorted list"
+  (let [n (count values)]
+    (letfn [(build [arr left right]
+              (if (<= left right)
+                (let [mid (+ left (quot (- right left) 2))
+                      mid-val (nth arr mid)
+                      node (tree-node mid-val)]
+                  (set-node-left node (build arr left (dec mid)))
+                  (set-node-right node (build arr (inc mid) right)))
+                nil))]
+      (build (vec values) 0 (dec n)))))
+
+; 배열에서 완전 이진 트리 생성 (힙 구조)
+(defn create-complete-tree [values]
+  "Create complete binary tree from array"
+  (if (empty? values)
+    nil
+    (let [nodes (atom (vec (map tree-node values)))
+          n (count values)]
+      (doseq [i (range (quot n 2) -1 -1)]
+        (let [left-idx (+ (* i 2) 1)
+              right-idx (+ (* i 2) 2)
+              left (if (< left-idx n) (nth @nodes left-idx) nil)
+              right (if (< right-idx n) (nth @nodes right-idx) nil)
+              node (nth @nodes i)]
+          (swap! nodes assoc i (set-node-left (set-node-right node right) left))))
+      (nth @nodes 0))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Binary Search Tree (BST)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; BST에 값 삽입
+(defn bst-insert [node value]
+  "Insert value into BST"
+  (if (nil? node)
+    (tree-node value)
+    (if (< value (:value node))
+      (set-node-left node (bst-insert (node-left node) value))
+      (if (> value (:value node))
+        (set-node-right node (bst-insert (node-right node) value))
+        node))))
+
+; BST 검색
+(defn bst-search [node value]
+  "Search for value in BST"
+  (if (nil? node)
+    false
+    (if (= value (:value node))
+      true
+      (if (< value (:value node))
+        (bst-search (node-left node) value)
+        (bst-search (node-right node) value)))))
+
+; BST에서 최솟값 찾기
+(defn bst-min [node]
+  "Find minimum value in BST"
+  (loop [current node]
+    (if (nil? (node-left current))
+      (:value current)
+      (recur (node-left current)))))
+
+; BST에서 최댓값 찾기
+(defn bst-max [node]
+  "Find maximum value in BST"
+  (loop [current node]
+    (if (nil? (node-right current))
+      (:value current)
+      (recur (node-right current)))))
+
+; BST 삭제
+(defn bst-delete [node value]
+  "Delete value from BST"
+  (if (nil? node)
+    nil
+    (let [node-val (:value node)]
+      (cond
+        (< value node-val)
+        (set-node-left node (bst-delete (node-left node) value))
+
+        (> value node-val)
+        (set-node-right node (bst-delete (node-right node) value))
+
+        :else
+        ; 삭제할 노드 찾음
+        (let [left (node-left node)
+              right (node-right node)]
+          (cond
+            (nil? left) right
+            (nil? right) left
+            :else
+            ; 양쪽 자식 모두 있음 — 중위 후속자 사용
+            (let [min-right (bst-min right)]
+              (assoc node
+                :value min-right
+                :right (bst-delete right min-right)))))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Tree Inspection
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 트리 높이
+(defn tree-height [node]
+  "Calculate height of tree"
+  (if (nil? node)
+    0
+    (inc (max (tree-height (node-left node))
+              (tree-height (node-right node))))))
+
+; 트리 노드 개수
+(defn tree-size [node]
+  "Count nodes in tree"
+  (if (nil? node)
+    0
+    (+ 1 (tree-size (node-left node))
+       (tree-size (node-right node)))))
+
+; 트리 리프 개수
+(defn tree-leaf-count [node]
+  "Count leaf nodes"
+  (cond
+    (nil? node) 0
+    (and (nil? (node-left node)) (nil? (node-right node))) 1
+    :else (+ (tree-leaf-count (node-left node))
+             (tree-leaf-count (node-right node)))))
+
+; 트리 균형 확인 (AVL)
+(defn tree-is-balanced [node]
+  "Check if tree is balanced (AVL property)"
+  (if (nil? node)
+    true
+    (let [left-height (tree-height (node-left node))
+          right-height (tree-height (node-right node))
+          height-diff (Math/abs (- left-height right-height))]
+      (and (<= height-diff 1)
+           (tree-is-balanced (node-left node))
+           (tree-is-balanced (node-right node))))))
+
+; 트리가 BST인지 확인
+(defn tree-is-bst [node &:key [min-val Double/NEGATIVE_INFINITY max-val Double/POSITIVE_INFINITY]]
+  "Check if tree is valid BST"
+  (if (nil? node)
+    true
+    (let [val (:value node)]
+      (and (> val min-val)
+           (< val max-val)
+           (tree-is-bst (node-left node) :min-val min-val :max-val val)
+           (tree-is-bst (node-right node) :min-val val :max-val max-val)))))
+
+; 트리가 완전한지 확인
+(defn tree-is-complete [node]
+  "Check if tree is complete"
+  (let [height (tree-height node)
+        size (tree-size node)]
+    (= size (dec (bit-shift-left 1 height)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Path Operations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 루트에서 값까지 경로 찾기
+(defn find-path [node value]
+  "Find path from root to value"
+  (cond
+    (nil? node) nil
+    (= value (:value node)) [value]
+    :else
+    (let [left-path (find-path (node-left node) value)]
+      (if (not (nil? left-path))
+        (conj [(:value node)] left-path)
+        (let [right-path (find-path (node-right node) value)]
+          (if (not (nil? right-path))
+            (conj [(:value node)] right-path)
+            nil))))))
+
+; 두 노드 간 경로
+(defn path-between [node u v]
+  "Find path between two values"
+  (let [path-u (find-path node u)
+        path-v (find-path node v)]
+    (if (and (not (nil? path-u)) (not (nil? path-v)))
+      (let [path-u-vec (vec (flatten path-u))
+            path-v-vec (vec (flatten path-v))
+            lca-idx (atom 0)]
+        (dotimes [i (min (count path-u-vec) (count path-v-vec))]
+          (if (= (nth path-u-vec i) (nth path-v-vec i))
+            (reset! lca-idx (inc i))))
+        (vec (concat (drop @lca-idx path-u-vec)
+                     (drop @lca-idx (reverse path-v-vec)))))
+      nil)))
+
+; 루트에서 모든 경로
+(defn all-root-paths [node]
+  "Find all paths from root to leaves"
+  (if (nil? node)
+    []
+    (if (and (nil? (node-left node)) (nil? (node-right node)))
+      [[(:value node)]]
+      (let [left-paths (all-root-paths (node-left node))
+            right-paths (all-root-paths (node-right node))]
+        (concat
+          (map (fn [path] (conj path (:value node))) left-paths)
+          (map (fn [path] (conj path (:value node))) right-paths))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Tree Structure (Phase 161) loaded")

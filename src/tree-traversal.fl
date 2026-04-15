@@ -1,0 +1,222 @@
+; ============================================================================
+; FreeLang v9 — Phase 161: Tree Traversal Algorithms
+; BFS, DFS, 중위/전위/후위 순회
+; ============================================================================
+
+(load "src/tree-structure.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Breadth-First Search (BFS)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; BFS 순회 (레벨 순서)
+(defn tree-bfs [node]
+  "Perform breadth-first search traversal"
+  (if (nil? node)
+    []
+    (let [queue (atom [node])
+          result (atom [])]
+      (loop []
+        (if (empty? @queue)
+          @result
+          (let [current (first @queue)]
+            (swap! result conj (:value current))
+            (let [new-nodes (vec (concat (if (nil? (node-left current)) [] [(node-left current)])
+                                         (if (nil? (node-right current)) [] [(node-right current)])))]
+              (swap! queue (fn [q] (vec (concat (rest q) new-nodes))))
+              (recur))))))))
+
+; 레벨 순서 (2D 배열)
+(defn tree-level-order [node]
+  "Get level-order traversal as 2D array"
+  (if (nil? node)
+    []
+    (let [levels (atom [])
+          queue (atom [node])
+          depth (atom 0)]
+      (loop []
+        (if (empty? @queue)
+          @levels
+          (let [level-size (count @queue)
+                level-values (atom [])]
+            (dotimes [_ level-size]
+              (let [current (first @queue)]
+                (swap! level-values conj (:value current))
+                (let [new-nodes (vec (concat (if (nil? (node-left current)) [] [(node-left current)])
+                                             (if (nil? (node-right current)) [] [(node-right current)])))]
+                  (swap! queue (fn [q] (vec (concat (rest q) new-nodes)))))))
+            (swap! levels conj @level-values)
+            (recur)))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Depth-First Search (DFS) — Inorder
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 중위 순회 (Left → Root → Right)
+(defn tree-inorder [node]
+  "Inorder traversal (Left-Root-Right)"
+  (if (nil? node)
+    []
+    (concat (tree-inorder (node-left node))
+            [(:value node)]
+            (tree-inorder (node-right node)))))
+
+; 중위 순회 (반복)
+(defn tree-inorder-iter [node]
+  "Inorder traversal using iteration"
+  (let [stack (atom [])
+        result (atom [])
+        current (atom node)]
+    (loop []
+      (if (or (not (nil? @current)) (not (empty? @stack)))
+        (do
+          (if (not (nil? @current))
+            (do
+              (swap! stack conj @current)
+              (reset! current (node-left @current)))
+            (do
+              (let [node (first @stack)]
+                (swap! stack rest)
+                (swap! result conj (:value node))
+                (reset! current (node-right node))))))
+          (recur))
+        @result))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Depth-First Search (DFS) — Preorder
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 전위 순회 (Root → Left → Right)
+(defn tree-preorder [node]
+  "Preorder traversal (Root-Left-Right)"
+  (if (nil? node)
+    []
+    (concat [(:value node)]
+            (tree-preorder (node-left node))
+            (tree-preorder (node-right node)))))
+
+; 전위 순회 (반복)
+(defn tree-preorder-iter [node]
+  "Preorder traversal using iteration"
+  (if (nil? node)
+    []
+    (let [stack (atom [node])
+          result (atom [])]
+      (loop []
+        (if (empty? @stack)
+          @result
+          (let [current (first @stack)]
+            (swap! result conj (:value current))
+            (let [new-stack (vec (concat (if (nil? (node-right current)) [] [(node-right current)])
+                                         (if (nil? (node-left current)) [] [(node-left current)])))]
+              (swap! stack (fn [s] (vec (concat new-stack (rest s)))))
+              (recur))))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Depth-First Search (DFS) — Postorder
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 후위 순회 (Left → Right → Root)
+(defn tree-postorder [node]
+  "Postorder traversal (Left-Right-Root)"
+  (if (nil? node)
+    []
+    (concat (tree-postorder (node-left node))
+            (tree-postorder (node-right node))
+            [(:value node)])))
+
+; 후위 순회 (반복)
+(defn tree-postorder-iter [node]
+  "Postorder traversal using iteration"
+  (if (nil? node)
+    []
+    (let [stack1 (atom [node])
+          stack2 (atom [])
+          result (atom [])]
+      (loop []
+        (if (empty? @stack1)
+          (do
+            (while (not (empty? @stack2))
+              (let [node (first @stack2)]
+                (swap! result conj (:value node))
+                (swap! stack2 rest)))
+            @result)
+          (do
+            (let [current (first @stack1)]
+              (swap! stack1 rest)
+              (swap! stack2 conj current)
+              (if (not (nil? (node-left current)))
+                (swap! stack1 conj (node-left current)))
+              (if (not (nil? (node-right current)))
+                (swap! stack1 conj (node-right current))))
+            (recur)))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Spiral & Boundary Traversal
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 지그재그 순회 (위아래 교대)
+(defn tree-zigzag [node]
+  "Zigzag level order traversal"
+  (if (nil? node)
+    []
+    (let [levels (tree-level-order node)
+          n (count levels)]
+      (map-indexed (fn [i level]
+                     (if (even? i) level (reverse level)))
+                   levels))))
+
+; 오른쪽 보기 (각 레벨의 가장 오른쪽 노드)
+(defn tree-right-view [node]
+  "Get right view of tree"
+  (if (nil? node)
+    []
+    (let [levels (tree-level-order node)]
+      (map (fn [level] (last level)) levels))))
+
+; 왼쪽 보기 (각 레벨의 가장 왼쪽 노드)
+(defn tree-left-view [node]
+  "Get left view of tree"
+  (if (nil? node)
+    []
+    (let [levels (tree-level-order node)]
+      (map (fn [level] (first level)) levels))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Vertical & Diagonal Traversal
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 수직 순회 (컬럼별)
+(defn tree-vertical [node]
+  "Vertical order traversal"
+  (if (nil? node)
+    []
+    (let [map (atom {})
+          queue (atom [node])
+          col (atom 0)]
+      (loop []
+        (if (empty? @queue)
+          (let [cols (sort (keys @map))]
+            (map (fn [c] (sort (@map c))) cols))
+          (let [current (first @queue)
+                left (node-left current)
+                right (node-right current)]
+            (swap! map (fn [m]
+              (update m @col (fn [v]
+                (if (nil? v) [(:value current)] (conj v (:value current)))))))
+            (if (not (nil? left))
+              (do
+                (reset! col (dec @col))
+                (swap! queue conj left)))
+            (if (not (nil? right))
+              (do
+                (reset! col (inc @col))
+                (swap! queue conj right)))
+            (swap! queue rest)
+            (recur)))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Tree Traversal (Phase 161) loaded")

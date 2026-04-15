@@ -1,0 +1,196 @@
+; ============================================================================
+; FreeLang v9 — Phase 161: Tree Analysis & Metrics
+; LCA, 직경, 부분트리 합, 경로 합
+; ============================================================================
+
+(load "src/tree-traversal.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Lowest Common Ancestor (LCA)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; LCA 찾기 (BST)
+(defn lca-bst [node u v]
+  "Find lowest common ancestor in BST"
+  (cond
+    (nil? node) nil
+    (and (< u (:value node)) (< v (:value node))) (lca-bst (node-left node) u v)
+    (and (> u (:value node)) (> v (:value node))) (lca-bst (node-right node) u v)
+    :else (:value node)))
+
+; LCA 찾기 (일반 이진 트리)
+(defn lca-tree [node u v]
+  "Find lowest common ancestor in binary tree"
+  (cond
+    (nil? node) nil
+    (or (= (:value node) u) (= (:value node) v)) (:value node)
+    :else
+    (let [left (lca-tree (node-left node) u v)
+          right (lca-tree (node-right node) u v)]
+      (cond
+        (and (not (nil? left)) (not (nil? right))) (:value node)
+        (not (nil? left)) left
+        :else right))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Tree Diameter & Radius
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 트리 직경 (가장 먼 두 노드 간 거리)
+(defn tree-diameter [node]
+  "Find diameter (longest path between any two nodes)"
+  (letfn [(height-and-diameter [n]
+            (if (nil? n)
+              {:height 0 :diameter 0}
+              (let [left (height-and-diameter (node-left n))
+                    right (height-and-diameter (node-right n))
+                    h (inc (max (:height left) (:height right)))
+                    d (max (:diameter left)
+                           (:diameter right)
+                           (+ (:height left) (:height right) 1))]
+                {:height h :diameter d})))]
+    (:diameter (height-and-diameter node))))
+
+; 트리 반지름
+(defn tree-radius [node]
+  "Find radius (minimum eccentricity)"
+  (if (nil? node)
+    0
+    (let [height (tree-height node)]
+      (quot (inc (tree-diameter node)) 2))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Path Operations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 노드까지의 거리
+(defn node-distance [node target]
+  "Find distance from root to target node"
+  (cond
+    (nil? node) -1
+    (= (:value node) target) 0
+    :else
+    (let [left-dist (node-distance (node-left node) target)]
+      (if (>= left-dist 0)
+        (inc left-dist)
+        (let [right-dist (node-distance (node-right node) target)]
+          (if (>= right-dist 0)
+            (inc right-dist)
+            -1))))))
+
+; 두 노드 간 거리
+(defn distance-between [node u v]
+  "Find distance between two nodes"
+  (if (or (nil? node))
+    -1
+    (let [lca (lca-tree node u v)
+          dist-lca-u (node-distance node u)
+          dist-lca-v (node-distance node v)]
+      (if (and (>= dist-lca-u 0) (>= dist-lca-v 0))
+        (+ dist-lca-u dist-lca-v)
+        -1))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Sum & Product Calculations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 모든 노드의 합
+(defn tree-sum [node]
+  "Sum all node values"
+  (if (nil? node)
+    0
+    (+ (:value node)
+       (tree-sum (node-left node))
+       (tree-sum (node-right node)))))
+
+; 부분트리 합
+(defn subtree-sum [node]
+  "Calculate sum of each subtree"
+  (if (nil? node)
+    0
+    (let [left-sum (tree-sum (node-left node))
+          right-sum (tree-sum (node-right node))]
+      (+ (:value node) left-sum right-sum))))
+
+; 경로 합 (루트에서 리프)
+(defn path-sum [node target-sum]
+  "Count paths from root to leaf with given sum"
+  (letfn [(count-paths [n sum]
+            (if (nil? n)
+              0
+              (let [new-sum (- sum (:value n))
+                    is-leaf (and (nil? (node-left n)) (nil? (node-right n)))]
+                (+ (if is-leaf
+                     (if (= new-sum 0) 1 0)
+                     0)
+                   (count-paths (node-left n) new-sum)
+                   (count-paths (node-right n) new-sum)))))]
+    (count-paths node target-sum)))
+
+; 최대 경로 합
+(defn max-path-sum [node]
+  "Find maximum sum path in tree"
+  (let [max-val (atom Double/NEGATIVE_INFINITY)]
+    (letfn [(dfs [n]
+              (if (nil? n)
+                0
+                (let [left (max 0 (dfs (node-left n)))
+                      right (max 0 (dfs (node-right n)))
+                      current (+ (:value n) left right)]
+                  (reset! max-val (max @max-val current))
+                  (+ (:value n) (max left right)))))]
+      (dfs node)
+      @max-val)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Tree Metrics
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 모든 노드까지의 거리 합
+(defn sum-of-distances [node]
+  "Sum of distances from root to all nodes"
+  (letfn [(dfs [n depth]
+            (if (nil? n)
+              0
+              (+ depth
+                 (dfs (node-left n) (inc depth))
+                 (dfs (node-right n) (inc depth)))))]
+    (dfs node 0)))
+
+; 엣지 개수
+(defn tree-edge-count [node]
+  "Count edges in tree"
+  (if (nil? node)
+    0
+    (let [edges (atom 0)]
+      (if (not (nil? (node-left node)))
+        (swap! edges inc))
+      (if (not (nil? (node-right node)))
+        (swap! edges inc))
+      (+ @edges
+         (tree-edge-count (node-left node))
+         (tree-edge-count (node-right node))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Tree Statistics
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 종합 통계
+(defn tree-statistics [node]
+  "Compute comprehensive tree statistics"
+  {:height (tree-height node)
+   :size (tree-size node)
+   :leaves (tree-leaf-count node)
+   :diameter (tree-diameter node)
+   :radius (tree-radius node)
+   :balanced (tree-is-balanced node)
+   :is-bst (tree-is-bst node)
+   :sum (tree-sum node)
+   :max-path (max-path-sum node)
+   :edges (tree-edge-count node)})
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Tree Analysis (Phase 161) loaded")

@@ -1,0 +1,244 @@
+; ============================================================================
+; FreeLang v9 — Phase 160: Graph Algorithms & Analysis
+; 그래프 표현, 인접 리스트, 가중치 그래프
+; ============================================================================
+
+(load "src/simplification.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Graph Representation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 인접 리스트 기반 그래프
+(defn create-graph [vertices &:key [directed false]]
+  "Create graph from vertex list"
+  {:type :graph
+   :vertices (set vertices)
+   :edges (atom {})
+   :weights (atom {})
+   :directed directed})
+
+; 간선 추가
+(defn add-edge [graph u v &:key [weight 1]]
+  "Add edge to graph"
+  (let [edge-key (if (:directed graph)
+                  (str u "->" v)
+                  (str (min u v) "<->" (max u v)))]
+    (swap! (:edges graph) (fn [edges]
+      (update edges u (fn [neighbors]
+        (if (nil? neighbors)
+          [v]
+          (if (contains? (set neighbors) v)
+            neighbors
+            (conj neighbors v)))))))
+    (if (not (:directed graph))
+      (swap! (:edges graph) (fn [edges]
+        (update edges v (fn [neighbors]
+          (if (nil? neighbors)
+            [u]
+            (if (contains? (set neighbors) u)
+              neighbors
+              (conj neighbors u))))))))
+    (swap! (:weights graph) assoc edge-key weight)
+    graph))
+
+; 간선 제거
+(defn remove-edge [graph u v]
+  "Remove edge from graph"
+  (let [edge-key (if (:directed graph)
+                  (str u "->" v)
+                  (str (min u v) "<->" (max u v)))]
+    (swap! (:edges graph) (fn [edges]
+      (update edges u (fn [neighbors]
+        (if (nil? neighbors) nil (vec (remove #(= % v) neighbors)))))))
+    (if (not (:directed graph))
+      (swap! (:edges graph) (fn [edges]
+        (update edges v (fn [neighbors]
+          (if (nil? neighbors) nil (vec (remove #(= % u) neighbors))))))))
+    (swap! (:weights graph) dissoc edge-key)
+    graph))
+
+; 꼭짓점 추가
+(defn add-vertex [graph v]
+  "Add vertex to graph"
+  (assoc graph :vertices (conj (:vertices graph) v)))
+
+; 꼭짓점 제거
+(defn remove-vertex [graph v]
+  "Remove vertex and all its edges"
+  (let [neighbors (get @(:edges graph) v [])]
+    (reduce (fn [g neighbor]
+      (remove-edge g v neighbor))
+      (assoc graph :vertices (disj (:vertices graph) v))
+      neighbors)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Graph Inspection
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 간선 가져오기
+(defn get-neighbors [graph vertex]
+  "Get neighbors of vertex"
+  (get @(:edges graph) vertex []))
+
+; 간선 가중치 가져오기
+(defn get-edge-weight [graph u v]
+  "Get weight of edge between u and v"
+  (let [edge-key (if (:directed graph)
+                  (str u "->" v)
+                  (str (min u v) "<->" (max u v)))]
+    (get @(:weights graph) edge-key 1)))
+
+; 간선 존재 확인
+(defn has-edge [graph u v]
+  "Check if edge exists"
+  (contains? (set (get-neighbors graph u)) v))
+
+; 그래프 정보
+(defn graph-info [graph]
+  "Get graph information"
+  {:vertices (count (:vertices graph))
+   :edges (reduce (fn [sum v]
+             (+ sum (count (get-neighbors graph v))))
+             0
+             (:vertices graph))
+   :directed (:directed graph)
+   :weighted (> (count @(:weights graph)) 0)})
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Adjacency Matrix Representation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 인접 리스트를 인접 행렬로 변환
+(defn to-adjacency-matrix [graph]
+  "Convert graph to adjacency matrix"
+  (let [vertices (vec (:vertices graph))
+        n (count vertices)
+        matrix (atom (vec (repeat n (vec (repeat n 0)))))]
+    (doseq [i (range n)
+            j (range n)]
+      (let [u (nth vertices i)
+            v (nth vertices j)]
+        (if (has-edge graph u v)
+          (let [weight (get-edge-weight graph u v)]
+            (swap! matrix (fn [m]
+              (assoc m i
+                (assoc (nth m i) j weight))))))))
+    {:matrix @matrix
+     :vertices vertices}))
+
+; 인접 행렬을 인접 리스트로 변환
+(defn from-adjacency-matrix [matrix vertices &:key [directed false]]
+  "Convert adjacency matrix to graph"
+  (let [graph (create-graph vertices :directed directed)
+        n (count vertices)]
+    (doseq [i (range n)
+            j (range n)]
+      (let [weight (nth (nth matrix i) j)]
+        (if (> weight 0)
+          (add-edge graph (nth vertices i) (nth vertices j) :weight weight))))
+    graph))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Graph Properties
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 정점의 차수
+(defn vertex-degree [graph vertex]
+  "Get degree of vertex"
+  (count (get-neighbors graph vertex)))
+
+; 최대 차수
+(defn max-degree [graph]
+  "Get maximum degree in graph"
+  (reduce (fn [max-d v]
+    (max max-d (vertex-degree graph v)))
+    0
+    (:vertices graph)))
+
+; 최소 차수
+(defn min-degree [graph]
+  "Get minimum degree in graph"
+  (reduce (fn [min-d v]
+    (min min-d (vertex-degree graph v)))
+    Integer/MAX_VALUE
+    (:vertices graph)))
+
+; 평균 차수
+(defn avg-degree [graph]
+  "Get average degree in graph"
+  (let [total (reduce (fn [sum v]
+                 (+ sum (vertex-degree graph v)))
+               0
+               (:vertices graph))]
+    (/ total (count (:vertices graph)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Graph Density & Sparsity
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 그래프 밀도
+(defn graph-density [graph]
+  "Calculate graph density (0-1)"
+  (let [n (count (:vertices graph))
+        max-edges (if (:directed graph)
+                   (* n (dec n))
+                   (/ (* n (dec n)) 2))
+        actual-edges (reduce (fn [sum v]
+                       (+ sum (count (get-neighbors graph v))))
+                       0
+                       (:vertices graph))]
+    (if (= max-edges 0)
+      0
+      (/ actual-edges max-edges))))
+
+; 그래프 희소성
+(defn is-sparse [graph &:key [threshold 0.5]]
+  "Check if graph is sparse"
+  (< (graph-density graph) threshold))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Graph Copy & Transformation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 그래프 복사
+(defn copy-graph [graph]
+  "Create deep copy of graph"
+  (let [new-graph (create-graph (:vertices graph) :directed (:directed graph))]
+    (doseq [v (:vertices graph)]
+      (doseq [neighbor (get-neighbors graph v)]
+        (let [weight (get-edge-weight graph v neighbor)]
+          (add-edge new-graph v neighbor :weight weight))))
+    new-graph))
+
+; 그래프 역방향 (방향 그래프만)
+(defn reverse-graph [graph]
+  "Reverse directed graph"
+  (if (not (:directed graph))
+    (throw (Exception. "Can only reverse directed graphs")))
+  (let [rev-graph (create-graph (:vertices graph) :directed true)]
+    (doseq [v (:vertices graph)]
+      (doseq [neighbor (get-neighbors graph v)]
+        (let [weight (get-edge-weight graph v neighbor)]
+          (add-edge rev-graph neighbor v :weight weight))))
+    rev-graph))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 7. Graph Complement
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 그래프 보수 (없는 간선만 추가)
+(defn graph-complement [graph]
+  "Create complement graph (missing edges)"
+  (let [comp (create-graph (:vertices graph) :directed (:directed graph))]
+    (doseq [u (:vertices graph)
+            v (:vertices graph)]
+      (if (and (not (= u v)) (not (has-edge graph u v)))
+        (add-edge comp u v)))
+    comp))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Graph Structure (Phase 160) loaded")

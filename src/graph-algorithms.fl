@@ -1,0 +1,281 @@
+; ============================================================================
+; FreeLang v9 — Phase 160: Graph Algorithms
+; BFS, DFS, 최단경로, 위상 정렬
+; ============================================================================
+
+(load "src/graph-structure.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Breadth-First Search (BFS)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; BFS 순회
+(defn bfs [graph start]
+  "Perform breadth-first search from start vertex"
+  (let [visited (atom #{})
+        queue (atom [start])
+        order (atom [])]
+    (loop []
+      (if (empty? @queue)
+        @order
+        (let [vertex (first @queue)]
+          (if (contains? @visited vertex)
+            (do
+              (swap! queue rest)
+              (recur))
+            (do
+              (swap! visited conj vertex)
+              (swap! order conj vertex)
+              (let [neighbors (get-neighbors graph vertex)
+                    unvisited (filter (fn [n] (not (contains? @visited n))) neighbors)]
+                (swap! queue (fn [q] (vec (concat (rest q) unvisited))))
+                (recur)))))))))
+
+; BFS 거리
+(defn bfs-distances [graph start]
+  "Compute distances from start vertex using BFS"
+  (let [distances (atom {start 0})
+        queue (atom [start])]
+    (loop []
+      (if (empty? @queue)
+        @distances
+        (let [vertex (first @queue)
+              dist (get @distances vertex)
+              neighbors (get-neighbors graph vertex)]
+          (doseq [neighbor neighbors]
+            (if (not (contains? @distances neighbor))
+              (swap! distances assoc neighbor (inc dist))))
+          (swap! queue (fn [q]
+            (vec (concat (rest q) (filter (fn [n] (not (contains? @distances n))) neighbors)))))
+          (recur))))))
+
+; BFS 경로 추적
+(defn bfs-path [graph start end]
+  "Find shortest path from start to end using BFS"
+  (let [parent (atom {start nil})
+        queue (atom [start])]
+    (loop []
+      (if (empty? @queue)
+        (if (contains? @parent end)
+          (loop [path [] v end]
+            (if (nil? v)
+              path
+              (recur (conj path v) (get @parent v))))
+          nil)
+        (let [vertex (first @queue)
+              neighbors (get-neighbors graph vertex)]
+          (doseq [neighbor neighbors]
+            (if (not (contains? @parent neighbor))
+              (swap! parent assoc neighbor vertex)))
+          (swap! queue (fn [q]
+            (vec (concat (rest q) (filter (fn [n] (not (contains? @parent n))) neighbors)))))
+          (recur))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Depth-First Search (DFS)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; DFS 순회 (재귀)
+(defn dfs [graph start]
+  "Perform depth-first search from start vertex"
+  (let [visited (atom #{})
+        order (atom [])]
+    (letfn [(dfs-visit [v]
+              (if (not (contains? @visited v))
+                (do
+                  (swap! visited conj v)
+                  (swap! order conj v)
+                  (doseq [neighbor (get-neighbors graph v)]
+                    (dfs-visit neighbor)))))]
+      (dfs-visit start)
+      @order)))
+
+; DFS 순회 (모든 꼭짓점)
+(defn dfs-full [graph]
+  "Perform DFS on entire graph"
+  (let [visited (atom #{})
+        order (atom [])]
+    (letfn [(dfs-visit [v]
+              (if (not (contains? @visited v))
+                (do
+                  (swap! visited conj v)
+                  (swap! order conj v)
+                  (doseq [neighbor (get-neighbors graph v)]
+                    (dfs-visit neighbor)))))]
+      (doseq [v (:vertices graph)]
+        (dfs-visit v))
+      @order)))
+
+; DFS 완료 시간 (위상 정렬용)
+(defn dfs-finish-times [graph]
+  "Compute finish times for topological sort"
+  (let [visited (atom #{})
+        finish-times (atom {})
+        time (atom 0)]
+    (letfn [(dfs-visit [v]
+              (if (not (contains? @visited v))
+                (do
+                  (swap! visited conj v)
+                  (doseq [neighbor (get-neighbors graph v)]
+                    (dfs-visit neighbor))
+                  (swap! finish-times assoc v @time)
+                  (swap! time inc))))]
+      (doseq [v (:vertices graph)]
+        (dfs-visit v))
+      @finish-times)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Shortest Path Algorithms
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Dijkstra 알고리즘 (양수 가중치)
+(defn dijkstra [graph start]
+  "Find shortest paths using Dijkstra's algorithm"
+  (let [distances (atom (zipmap (:vertices graph) (repeat Double/POSITIVE_INFINITY)))
+        parent (atom {})
+        unvisited (atom (:vertices graph))]
+    (swap! distances assoc start 0)
+    (loop []
+      (if (empty? @unvisited)
+        @distances
+        (let [u (reduce (fn [min-v v]
+                  (if (< (get @distances v Double/POSITIVE_INFINITY)
+                         (get @distances min-v Double/POSITIVE_INFINITY))
+                    v
+                    min-v))
+                (first @unvisited)
+                @unvisited)
+              current-dist (get @distances u)]
+          (swap! unvisited disj u)
+          (doseq [v (get-neighbors graph u)]
+            (let [weight (get-edge-weight graph u v)
+                  new-dist (+ current-dist weight)]
+              (if (< new-dist (get @distances v Double/POSITIVE_INFINITY))
+                (do
+                  (swap! distances assoc v new-dist)
+                  (swap! parent assoc v u)))))
+          (recur))))))
+
+; Bellman-Ford 알고리즘 (음수 가중치)
+(defn bellman-ford [graph start]
+  "Find shortest paths using Bellman-Ford algorithm"
+  (let [distances (atom (zipmap (:vertices graph) (repeat Double/POSITIVE_INFINITY)))
+        parent (atom {})]
+    (swap! distances assoc start 0)
+    ; V-1번 반복
+    (dotimes [_ (dec (count (:vertices graph)))]
+      (doseq [u (:vertices graph)]
+        (doseq [v (get-neighbors graph u)]
+          (let [weight (get-edge-weight graph u v)
+                new-dist (+ (get @distances u Double/POSITIVE_INFINITY) weight)]
+            (if (< new-dist (get @distances v Double/POSITIVE_INFINITY))
+              (do
+                (swap! distances assoc v new-dist)
+                (swap! parent assoc v u)))))))
+    @distances))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Topological Sort
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 위상 정렬 (Kahn의 알고리즘)
+(defn topological-sort [graph]
+  "Perform topological sort on DAG"
+  (let [in-degree (atom (zipmap (:vertices graph) (repeat 0)))
+        queue (atom [])]
+    ; In-degree 계산
+    (doseq [u (:vertices graph)]
+      (doseq [v (get-neighbors graph u)]
+        (swap! in-degree update v inc)))
+    ; In-degree 0인 노드 큐에 추가
+    (doseq [v (:vertices graph)]
+      (if (= (get @in-degree v) 0)
+        (swap! queue conj v)))
+    ; 위상 정렬
+    (let [sorted (atom [])]
+      (loop []
+        (if (empty? @queue)
+          (if (= (count @sorted) (count (:vertices graph)))
+            @sorted
+            nil) ; 사이클 감지
+          (let [u (first @queue)]
+            (swap! queue rest)
+            (swap! sorted conj u)
+            (doseq [v (get-neighbors graph u)]
+              (swap! in-degree update v dec)
+              (if (= (get @in-degree v) 0)
+                (swap! queue conj v)))
+            (recur)))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Cycle Detection
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 무방향 그래프에서 사이클 감지
+(defn has-cycle-undirected [graph]
+  "Detect cycle in undirected graph"
+  (let [visited (atom #{})
+        has-cycle (atom false)]
+    (letfn [(dfs [v parent]
+              (swap! visited conj v)
+              (doseq [neighbor (get-neighbors graph v)]
+                (if (= neighbor parent)
+                  nil
+                  (if (contains? @visited neighbor)
+                    (reset! has-cycle true)
+                    (dfs neighbor v)))))]
+      (doseq [v (:vertices graph)]
+        (if (not (contains? @visited v))
+          (dfs v nil)))
+      @has-cycle)))
+
+; 방향 그래프에서 사이클 감지
+(defn has-cycle-directed [graph]
+  "Detect cycle in directed graph"
+  (let [state (atom (zipmap (:vertices graph) (repeat 0)))
+        has-cycle (atom false)]
+    (letfn [(dfs [v]
+              (swap! state assoc v 1) ; 방문 중
+              (doseq [neighbor (get-neighbors graph v)]
+                (if (= (get @state neighbor) 0)
+                  (dfs neighbor)
+                  (if (= (get @state neighbor) 1)
+                    (reset! has-cycle true))))
+              (swap! state assoc v 2))] ; 방문 완료
+      (doseq [v (:vertices graph)]
+        (if (= (get @state v) 0)
+          (dfs v)))
+      @has-cycle)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Strongly Connected Components (SCC)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Kosaraju 알고리즘
+(defn strongly-connected-components [graph]
+  "Find strongly connected components using Kosaraju's algorithm"
+  (let [finish-times (dfs-finish-times graph)
+        rev-graph (reverse-graph graph)
+        sorted-vertices (sort-by (fn [v] (- (get finish-times v)))
+                          (:vertices graph))
+        visited (atom #{})
+        components (atom [])]
+    (letfn [(dfs [v component]
+              (if (not (contains? @visited v))
+                (do
+                  (swap! visited conj v)
+                  (swap! component conj v)
+                  (doseq [neighbor (get-neighbors rev-graph v)]
+                    (dfs neighbor component)))))]
+      (doseq [v sorted-vertices]
+        (if (not (contains? @visited v))
+          (let [component (atom [])]
+            (dfs v component)
+            (swap! components conj @component))))
+      @components)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Graph Algorithms (Phase 160) loaded")

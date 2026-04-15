@@ -1,0 +1,246 @@
+; ============================================================================
+; FreeLang v9 — Phase 160: Graph Analysis
+; 연결성, 중심성, 커뮤니티 검출
+; ============================================================================
+
+(load "src/graph-algorithms.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Connectivity Analysis
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 연결 컴포넌트 개수
+(defn connected-components [graph]
+  "Find connected components"
+  (let [visited (atom #{})
+        components (atom [])]
+    (letfn [(dfs [v component]
+              (if (not (contains? @visited v))
+                (do
+                  (swap! visited conj v)
+                  (swap! component conj v)
+                  (doseq [neighbor (get-neighbors graph v)]
+                    (dfs neighbor component)))))]
+      (doseq [v (:vertices graph)]
+        (if (not (contains? @visited v))
+          (let [component (atom [])]
+            (dfs v component)
+            (swap! components conj @component))))
+      @components)))
+
+; 두 정점이 연결되어 있는지 확인
+(defn is-connected [graph u v]
+  "Check if two vertices are in the same component"
+  (contains? (set (dfs graph u)) v))
+
+; 그래프가 완전히 연결되어 있는지 확인
+(defn is-fully-connected [graph]
+  "Check if graph is fully connected"
+  (= (count (connected-components graph)) 1))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Centrality Measures
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 차수 중심성 (Degree Centrality)
+(defn degree-centrality [graph]
+  "Compute degree centrality for all vertices"
+  (let [n (count (:vertices graph))
+        max-degree (max-degree graph)]
+    (reduce (fn [centrality v]
+      (assoc centrality v
+        (if (> max-degree 0)
+          (/ (vertex-degree graph v) max-degree)
+          0)))
+      {}
+      (:vertices graph))))
+
+; 근접 중심성 (Closeness Centrality)
+(defn closeness-centrality [graph]
+  "Compute closeness centrality for all vertices"
+  (let [n (count (:vertices graph))]
+    (reduce (fn [centrality v]
+      (let [distances (bfs-distances graph v)
+            sum-dist (reduce (fn [sum d]
+                       (+ sum (or d Double/POSITIVE_INFINITY)))
+                       0
+                       (vals distances))]
+        (assoc centrality v
+          (if (and (> sum-dist 0) (not (= sum-dist Double/POSITIVE_INFINITY)))
+            (/ (dec n) sum-dist)
+            0))))
+      {}
+      (:vertices graph))))
+
+; 매개 중심성 (Betweenness Centrality)
+(defn betweenness-centrality [graph]
+  "Compute betweenness centrality"
+  (let [n (count (:vertices graph))
+        centrality (atom (zipmap (:vertices graph) (repeat 0.0)))]
+    (doseq [s (:vertices graph)
+            t (:vertices graph)]
+      (if (not (= s t))
+        (let [path (bfs-path graph s t)]
+          (if (not (nil? path))
+            (doseq [v (rest (drop-last path))]
+              (swap! centrality update v (fn [c] (+ c 1.0))))))))
+    @centrality))
+
+; 고유벡터 중심성 (Eigenvector Centrality) - 간단한 버전
+(defn eigenvector-centrality [graph &:key [iterations 10]]
+  "Compute eigenvector centrality (power method)"
+  (let [centrality (atom (zipmap (:vertices graph) (repeat 1.0)))
+        n (count (:vertices graph))]
+    (dotimes [_ iterations]
+      (let [new-centrality (atom (zipmap (:vertices graph) (repeat 0.0)))]
+        (doseq [v (:vertices graph)]
+          (let [neighbor-sum (reduce (fn [sum neighbor]
+                                  (+ sum (get @centrality neighbor 0)))
+                                0
+                                (get-neighbors graph v))]
+            (swap! new-centrality assoc v neighbor-sum)))
+        (let [max-val (reduce max (vals @new-centrality))]
+          (if (> max-val 0)
+            (doseq [v (:vertices graph)]
+              (swap! new-centrality update v (fn [c] (/ c max-val))))))))
+      (reset! centrality @new-centrality))
+    @centrality))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Clustering Coefficient
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 로컬 클러스터링 계수
+(defn clustering-coefficient [graph vertex]
+  "Compute local clustering coefficient"
+  (let [neighbors (get-neighbors graph vertex)
+        k (count neighbors)]
+    (if (<= k 1)
+      0
+      (let [edges (atom 0)]
+        (doseq [i (range k)
+                j (range (inc i) k)]
+          (if (has-edge graph (nth neighbors i) (nth neighbors j))
+            (swap! edges inc)))
+        (/ (* 2 @edges) (* k (dec k)))))))
+
+; 평균 클러스터링 계수
+(defn avg-clustering-coefficient [graph]
+  "Compute average clustering coefficient"
+  (let [n (count (:vertices graph))
+        coeffs (reduce (fn [sum v]
+                  (+ sum (clustering-coefficient graph v)))
+                0
+                (:vertices graph))]
+    (if (> n 0)
+      (/ coeffs n)
+      0)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Distance & Diameter
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 두 정점 간 거리
+(defn vertex-distance [graph u v]
+  "Compute distance between two vertices"
+  (let [distances (bfs-distances graph u)]
+    (get distances v Double/POSITIVE_INFINITY)))
+
+; 그래프 직경
+(defn graph-diameter [graph]
+  "Compute graph diameter (longest shortest path)"
+  (let [vertices (:vertices graph)
+        max-dist (atom 0)]
+    (doseq [u vertices
+            v vertices]
+      (let [dist (vertex-distance graph u v)]
+        (if (< dist Double/POSITIVE_INFINITY)
+          (reset! max-dist (max @max-dist dist)))))
+    @max-dist))
+
+; 모든 쌍 최단 경로 (Floyd-Warshall)
+(defn all-pairs-shortest-paths [graph]
+  "Compute all-pairs shortest paths using Floyd-Warshall"
+  (let [vertices (vec (:vertices graph))
+        n (count vertices)
+        dist (atom (vec (repeat n (vec (repeat n Double/POSITIVE_INFINITY)))))]
+    ; 초기화
+    (doseq [i (range n)]
+      (swap! dist assoc i (assoc (nth @dist i) i 0)))
+    (doseq [u vertices
+            v (get-neighbors graph u)]
+      (let [u-idx (.indexOf vertices u)
+            v-idx (.indexOf vertices v)
+            weight (get-edge-weight graph u v)]
+        (swap! dist assoc u-idx (assoc (nth @dist u-idx) v-idx weight))))
+    ; Floyd-Warshall
+    (doseq [k (range n)
+            i (range n)
+            j (range n)]
+      (let [d-ik (nth (nth @dist i) k)
+            d-kj (nth (nth @dist k) j)
+            new-dist (+ d-ik d-kj)
+            current (nth (nth @dist i) j)]
+        (if (< new-dist current)
+          (swap! dist assoc i (assoc (nth @dist i) j new-dist)))))
+    @dist))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Triangle & Clique Detection
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 삼각형 개수
+(defn count-triangles [graph]
+  "Count triangles in graph"
+  (let [count (atom 0)]
+    (doseq [u (:vertices graph)]
+      (let [neighbors-u (get-neighbors graph u)]
+        (doseq [i (range (count neighbors-u))
+                j (range (inc i) (count neighbors-u))]
+          (let [v (nth neighbors-u i)
+                w (nth neighbors-u j)]
+            (if (has-edge graph v w)
+              (swap! count inc))))))
+    (/ @count 2))) ; 각 삼각형이 3번 세어지므로
+
+; 최대 클리크 (탐욕 알고리즘)
+(defn find-clique [graph &:key [size 3]]
+  "Find clique of given size using greedy algorithm"
+  (let [vertices (vec (:vertices graph))]
+    (loop [clique [] remaining vertices]
+      (if (>= (count clique) size)
+        clique
+        (if (empty? remaining)
+          clique
+          (let [v (first remaining)
+                can-add (every? (fn [u] (has-edge graph u v)) clique)]
+            (if can-add
+              (recur (conj clique v) (rest remaining))
+              (recur clique (rest remaining)))))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Graph Statistics
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 종합 그래프 통계
+(defn graph-statistics [graph]
+  "Compute comprehensive graph statistics"
+  {:vertices (count (:vertices graph))
+   :edges (/ (reduce (fn [sum v]
+              (+ sum (count (get-neighbors graph v))))
+             0
+             (:vertices graph))
+        (if (:directed graph) 1 2))
+   :density (graph-density graph)
+   :diameter (graph-diameter graph)
+   :avg-degree (avg-degree graph)
+   :avg-clustering (avg-clustering-coefficient graph)
+   :num-components (count (connected-components graph))
+   :is-sparse (is-sparse graph)
+   :is-fully-connected (is-fully-connected graph)})
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Graph Analysis (Phase 160) loaded")
