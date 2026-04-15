@@ -25,6 +25,7 @@
     "../src/stdlib-wsc.ts",
     "../src/stdlib-pg.ts",
     "../src/test-composition.ts",
-    "../src/test-modules.ts"
+    "../src/test-modules.ts",
+    "../src/__tests__/reliability.test.ts"
   ]
 }

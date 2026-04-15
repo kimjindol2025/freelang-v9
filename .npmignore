@@ -1,0 +1,38 @@
+# Source files
+src/
+.config/
+
+# Tests
+**/*.test.ts
+**/*.test.js
+jest.config.js
+
+# Development
+.git/
+.github/
+.gitignore
+.env.example
+Dockerfile
+docker-compose.yml
+
+# Documentation
+docs/
+README.md
+
+# Build config
+tsconfig.json
+*.ts
+!dist/
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# CI
+.github/workflows/
