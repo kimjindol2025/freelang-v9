@@ -1,0 +1,80 @@
+; ============================================================================
+; FreeLang v9 — Common Utilities & Optimizations
+; 공통 함수, 성능 최적화, 재사용 가능 모듈
+; ============================================================================
+
+; 수학 상수
+(def PI 3.141592653589793)
+(def E 2.718281828459045)
+
+; 거리 함수들 (중앙화)
+(defn euclidean-distance [p1 p2]
+  "Euclidean distance between two points"
+  (Math/sqrt (reduce + (map (fn [i] (let [d (- (nth p1 i) (nth p2 i))] (* d d))) (range (count p1))))))
+
+(defn manhattan-distance [p1 p2]
+  "Manhattan distance"
+  (reduce + (map (fn [i] (Math/abs (- (nth p1 i) (nth p2 i)))) (range (count p1)))))
+
+(defn cosine-similarity [v1 v2]
+  "Cosine similarity"
+  (let [dot (reduce + (map * v1 v2))
+        mag1 (Math/sqrt (reduce + (map (fn [x] (* x x)) v1)))
+        mag2 (Math/sqrt (reduce + (map (fn [x] (* x x)) v2)))]
+    (/ dot (* mag1 mag2))))
+
+; 활성화 함수 (중앙화)
+(defn sigmoid [x]
+  "Sigmoid activation"
+  (/ 1 (+ 1 (Math/exp (- x)))))
+
+(defn tanh-activation [x]
+  "Tanh activation"
+  (/ (- (Math/exp (* 2 x)) 1) (+ (Math/exp (* 2 x)) 1)))
+
+(defn relu [x]
+  "ReLU activation"
+  (max 0 x))
+
+(defn softmax [logits]
+  "Softmax"
+  (let [max-logit (reduce max logits)
+        exp-vals (map (fn [x] (Math/exp (- x max-logit))) logits)
+        sum (reduce + exp-vals)]
+    (map (fn [x] (/ x sum)) exp-vals)))
+
+; 손실 함수
+(defn cross-entropy-loss [y-true y-pred]
+  "Cross entropy loss"
+  (- (reduce + (map (fn [i] (* (nth y-true i) (Math/log (nth y-pred i)))) (range (count y-true))))))
+
+(defn mse-loss [y-true y-pred]
+  "Mean squared error"
+  (/ (reduce + (map (fn [i] (let [diff (- (nth y-true i) (nth y-pred i))] (* diff diff))) (range (count y-true))))
+     (count y-true)))
+
+; 최적화 함수
+(defn gradient-descent [params gradients learning-rate]
+  "Gradient descent update"
+  (map (fn [i] (- (nth params i) (* learning-rate (nth gradients i)))) (range (count params))))
+
+(defn adam-optimizer [params gradients m v step beta1 beta2 lr epsilon]
+  "Adam optimizer (simplified)"
+  (let [new-m (map (fn [i] (+ (* beta1 (nth m i)) (* (- 1 beta1) (nth gradients i)))) (range (count params)))
+        new-v (map (fn [i] (+ (* beta2 (nth v i)) (* (- 1 beta2) (* (nth gradients i) (nth gradients i))))) (range (count params)))]
+    {:params (map (fn [i] (- (nth params i) (* lr (/ (nth new-m i) (+ (Math/sqrt (nth new-v i)) epsilon))))) (range (count params)))
+     :m new-m :v new-v}))
+
+; 정규화
+(defn normalize [data]
+  "Min-max normalization"
+  (let [min-val (apply min data) max-val (apply max data) range (- max-val min-val)]
+    (map (fn [x] (/ (- x min-val) range)) data)))
+
+(defn standardize [data]
+  "Z-score standardization"
+  (let [mean (/ (reduce + data) (count data))
+        std (Math/sqrt (/ (reduce + (map (fn [x] (* (- x mean) (- x mean))) data)) (count data)))]
+    (map (fn [x] (/ (- x mean) std)) data)))
+
+(print "✓ Common Utilities (stdlib) loaded")

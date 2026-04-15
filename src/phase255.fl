@@ -1,0 +1,12 @@
+; Phase 255: Diffusion Models
+(defn diffusion-forward [x noise-schedule t]
+  "Forward diffusion process"
+  (let [alpha (nth noise-schedule t)
+        noise (rand)]
+    (+ (* (Math/sqrt alpha) x) (* (Math/sqrt (- 1 alpha)) noise))))
+
+(defn reverse-process [noisy-sample model]
+  "Reverse denoising"
+  (model noisy-sample))
+
+(print "✓ Phase 255 Diffusion loaded")

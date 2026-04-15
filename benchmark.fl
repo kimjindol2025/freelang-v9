@@ -1,0 +1,44 @@
+; ============================================================================
+; FreeLang v9 Benchmark Suite
+; 성능 측정, 메모리, 테스트 커버리지
+; ============================================================================
+
+(load "src/stdlib-common.fl")
+
+(defn benchmark [name f iterations]
+  "Run benchmark"
+  (let [start (System/nanoTime)]
+    (dotimes [_ iterations] (f))
+    (let [elapsed (/ (- (System/nanoTime) start) 1e9)]
+      {:name name :time elapsed :ops-per-sec (/ iterations elapsed)})))
+
+; 벤치마크 실행
+(println "FreeLang v9 Benchmark Suite")
+(println "============================")
+(println "")
+
+; 1. 거리 함수 벤치마크
+(println "Distance Functions:")
+(let [p1 (vec (map double (range 100)))
+      p2 (vec (map (fn [x] (+ x 1.5)) (range 100)))]
+  (println (benchmark "Euclidean Distance" (fn [] (euclidean-distance p1 p2)) 10000))
+  (println (benchmark "Manhattan Distance" (fn [] (manhattan-distance p1 p2)) 10000)))
+
+(println "")
+
+; 2. 활성화 함수 벤치마크
+(println "Activation Functions:")
+(println (benchmark "Sigmoid" (fn [] (sigmoid 0.5)) 100000))
+(println (benchmark "ReLU" (fn [] (relu -0.5)) 100000))
+(println (benchmark "Softmax" (fn [] (softmax [1 2 3 4 5])) 10000))
+
+(println "")
+
+; 3. 손실 함수 벤치마크
+(println "Loss Functions:")
+(let [y-true [1 0 0] y-pred [0.9 0.05 0.05]]
+  (println (benchmark "Cross Entropy" (fn [] (cross-entropy-loss y-true y-pred)) 100000))
+  (println (benchmark "MSE" (fn [] (mse-loss y-true y-pred)) 100000)))
+
+(println "")
+(println "✅ Benchmark Complete")

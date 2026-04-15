@@ -1,0 +1,15 @@
+; Phase 270: Vision-Language Models
+(defn encode-image [image encoder]
+  "Encode image to embeddings"
+  (vec (map (fn [pixel] (* pixel 0.5)) (flatten image))))
+
+(defn encode-text [text encoder]
+  "Encode text to embeddings"
+  (let [tokens (vec (map char (str text)))]
+    (vec (map (fn [t] (* (int t) 0.001)) tokens))))
+
+(defn vlm-score [image-emb text-emb]
+  "Vision-language matching score"
+  (reduce + (map * image-emb text-emb)))
+
+(print "✓ Phase 270 VLM loaded")

@@ -1,0 +1,17 @@
+; Phase 289: Quantization & Pruning
+(defn quantize-8bit [weights]
+  "8-bit quantization"
+  (let [max-w (reduce max weights)
+        min-w (reduce min weights)
+        scale (/ 255 (- max-w min-w))]
+    (vec (map (fn [w] (int (* (- w min-w) scale))) weights))))
+
+(defn dequantize [q-weights scale offset]
+  "Dequantization"
+  (vec (map (fn [qw] (+ (* (/ qw 255) scale) offset)) q-weights)))
+
+(defn magnitude-pruning [weights threshold]
+  "Prune small weights"
+  (vec (map (fn [w] (if (< (Math/abs w) threshold) 0 w)) weights)))
+
+(print "✓ Phase 289 Quantization loaded")
