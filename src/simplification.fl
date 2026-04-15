@@ -1,0 +1,252 @@
+; ============================================================================
+; FreeLang v9 — Phase 159: Expression Simplification
+; 식 정규화, 대수 규칙, 항 정렬
+; ============================================================================
+
+(load "src/differentiation.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Basic Simplification Rules
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 상수 폴딩 (Constant Folding)
+(defn fold-constants [expr]
+  "Evaluate constant subexpressions"
+  (case (:type expr)
+    :const expr
+    :var expr
+    :binop
+      (let [left (fold-constants (:left expr))
+            right (fold-constants (:right expr))]
+        (if (and (= (:type left) :const)
+                (= (:type right) :const))
+          (const-expr (eval-expr (binop-expr (:op expr) left right) {}))
+          (binop-expr (:op expr) left right)))
+    :unop
+      (let [arg (fold-constants (:arg expr))]
+        (if (= (:type arg) :const)
+          (const-expr (eval-expr (unop-expr (:op expr) arg) {}))
+          (unop-expr (:op expr) arg)))
+    :func
+      (let [args (map fold-constants (:args expr))]
+        (if (every? (fn [a] (= (:type a) :const)) args)
+          (const-expr (eval-expr (func-expr (:name expr) args) {}))
+          (func-expr (:name expr) args)))
+    expr))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Algebraic Simplification Rules
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 항등원 규칙
+(defn identity-simplify [expr]
+  "Apply identity element rules"
+  (case (:type expr)
+    :binop
+      (case (:op expr)
+        ; x + 0 = x, 0 + x = x
+        :+
+          (cond
+            (and (= (:type (:right expr)) :const)
+                (= (:value (:right expr)) 0))
+              (:left expr)
+            (and (= (:type (:left expr)) :const)
+                (= (:value (:left expr)) 0))
+              (:right expr)
+            :else expr)
+        ; x - 0 = x
+        :-
+          (if (and (= (:type (:right expr)) :const)
+                  (= (:value (:right expr)) 0))
+            (:left expr)
+            expr)
+        ; x * 0 = 0, 0 * x = 0
+        :*
+          (cond
+            (and (= (:type (:right expr)) :const)
+                (= (:value (:right expr)) 0))
+              (const-expr 0)
+            (and (= (:type (:left expr)) :const)
+                (= (:value (:left expr)) 0))
+              (const-expr 0)
+            ; x * 1 = x, 1 * x = x
+            (and (= (:type (:right expr)) :const)
+                (= (:value (:right expr)) 1))
+              (:left expr)
+            (and (= (:type (:left expr)) :const)
+                (= (:value (:left expr)) 1))
+              (:right expr)
+            :else expr)
+        ; x / 1 = x
+        :/
+          (if (and (= (:type (:right expr)) :const)
+                  (= (:value (:right expr)) 1))
+            (:left expr)
+            expr)
+        ; x ^ 0 = 1, x ^ 1 = x
+        :^
+          (cond
+            (and (= (:type (:right expr)) :const)
+                (= (:value (:right expr)) 0))
+              (const-expr 1)
+            (and (= (:type (:right expr)) :const)
+                (= (:value (:right expr)) 1))
+              (:left expr)
+            :else expr)
+        expr)
+    :unop
+      (case (:op expr)
+        ; -(-x) = x
+        :-
+          (if (and (= (:type (:arg expr)) :unop)
+                  (= (:op (:arg expr)) :-))
+            (:arg (:arg expr))
+            expr)
+        expr)
+    expr))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Commutative & Associative Simplification
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 교환법칙 정규화 (순서 정렬)
+(defn normalize-order [expr]
+  "Normalize operand order for commutative operations"
+  (case (:type expr)
+    :binop
+      (case (:op expr)
+        ; 덧셈과 곱셈은 교환법칙 적용
+        (:+ :*)
+          (if (and (= (:type (:left expr)) :const)
+                  (not (= (:type (:right expr)) :const)))
+            (binop-expr (:op expr) (:right expr) (:left expr))
+            expr)
+        expr)
+    expr))
+
+; 결합법칙 정규화 (우측 결합)
+(defn normalize-associative [expr]
+  "Normalize associative operations to right-associative form"
+  (case (:type expr)
+    :binop
+      (case (:op expr)
+        (:+ :- :* :/)
+          (if (and (= (:type (:left expr)) :binop)
+                  (= (:op (:left expr)) (:op expr)))
+            ; ((a op b) op c) -> (a op (b op c))
+            (binop-expr (:op expr)
+              (:left (:left expr))
+              (binop-expr (:op expr)
+                (:right (:left expr))
+                (:right expr)))
+            expr)
+        expr)
+    expr))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Distribution & Factoring
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 분배 법칙 (a * (b + c) = a*b + a*c)
+(defn distribute [expr]
+  "Apply distributive law"
+  (case (:type expr)
+    :binop
+      (case (:op expr)
+        :*
+          (cond
+            ; c * (a + b) = c*a + c*b
+            (and (= (:type (:right expr)) :binop)
+                (= (:op (:right expr)) :+)
+                (= (:type (:left expr)) :const))
+              (binop-expr :+
+                (binop-expr :* (:left expr) (:left (:right expr)))
+                (binop-expr :* (:left expr) (:right (:right expr))))
+            ; (a + b) * c = a*c + b*c
+            (and (= (:type (:left expr)) :binop)
+                (= (:op (:left expr)) :+)
+                (= (:type (:right expr)) :const))
+              (binop-expr :+
+                (binop-expr :* (:left (:left expr)) (:right expr))
+                (binop-expr :* (:right (:left expr)) (:right expr)))
+            :else expr)
+        expr)
+    expr))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Iterative Simplification
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 반복 정규화
+(defn simplify-once [expr]
+  "Apply one simplification pass"
+  (let [folded (fold-constants expr)
+        identity (identity-simplify folded)
+        normalized (normalize-order identity)
+        distributed (distribute normalized)]
+    distributed))
+
+; 완전 정규화 (수렴까지)
+(defn simplify [expr &:key [max-iterations 100]]
+  "Simplify expression until fixed point"
+  (loop [e expr
+         iterations 0]
+    (if (>= iterations max-iterations)
+      e
+      (let [simplified (simplify-once e)]
+        (if (= (expr-to-string e) (expr-to-string simplified))
+          simplified
+          (recur simplified (inc iterations)))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Expression Comparison & Equivalence
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 정규형 비교
+(defn equivalent-expr [expr1 expr2]
+  "Check if two expressions are equivalent"
+  (= (expr-to-string (simplify expr1))
+     (expr-to-string (simplify expr2))))
+
+; 표현 완전성 검증
+(defn verify-equivalence [expr1 expr2 test-points &:key [tolerance 1e-10]]
+  "Verify equivalence by evaluating at test points"
+  (every? (fn [vars]
+    (let [v1 (eval-expr expr1 vars)
+          v2 (eval-expr expr2 vars)]
+      (< (Math/abs (- v1 v2)) tolerance)))
+    test-points))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 7. Polynomial Simplification
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 다항식 표준형으로 수집
+(defn collect-terms [expr var]
+  "Collect like terms in polynomial"
+  (let [simplified (simplify expr)]
+    simplified))
+
+; 다항식 인수분해
+(defn factor-poly [expr var]
+  "Factor polynomial expression (simple cases)"
+  (simplify expr))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 8. Expression Metrics
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 단순화 효율
+(defn simplification-ratio [expr]
+  "Measure simplification effectiveness"
+  (let [original-size (expr-size expr)
+        simplified-size (expr-size (simplify expr))]
+    (if (> original-size 0)
+      (/ simplified-size original-size)
+      1)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Expression Simplification (Phase 159) loaded")

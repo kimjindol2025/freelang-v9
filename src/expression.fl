@@ -1,0 +1,290 @@
+; ============================================================================
+; FreeLang v9 — Phase 159: Symbolic Computation & Expression Trees
+; 기호 연산, 식 최적화, 대수 조작
+; ============================================================================
+
+(load "src/streams.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Expression Representation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 상수 표현
+(defn const-expr [value]
+  "Create constant expression"
+  {:type :const
+   :value value})
+
+; 변수 표현
+(defn var-expr [name]
+  "Create variable expression"
+  {:type :var
+   :name name})
+
+; 이항 연산자 표현
+(defn binop-expr [op left right]
+  "Create binary operation expression"
+  {:type :binop
+   :op op
+   :left left
+   :right right})
+
+; 단항 연산자 표현
+(defn unop-expr [op arg]
+  "Create unary operation expression"
+  {:type :unop
+   :op op
+   :arg arg})
+
+; 함수 호출 표현
+(defn func-expr [name args]
+  "Create function call expression"
+  {:type :func
+   :name name
+   :args args})
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Expression Parsing
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 토큰화
+(defn tokenize [expr-str]
+  "Tokenize expression string"
+  (let [tokens (atom [])
+        i (atom 0)
+        s (str/trim expr-str)]
+    (loop []
+      (if (>= @i (count s))
+        @tokens
+        (let [ch (get s @i)
+              next-ch (if (< (inc @i) (count s)) (get s (inc @i)) nil)]
+          (cond
+            (= ch " ") (do (swap! i inc) (recur))
+            (= ch "(") (do (swap! tokens conj {:type :lparen}) (swap! i inc) (recur))
+            (= ch ")") (do (swap! tokens conj {:type :rparen}) (swap! i inc) (recur))
+            (= ch "+") (do (swap! tokens conj {:type :op :op :+}) (swap! i inc) (recur))
+            (= ch "-") (do (swap! tokens conj {:type :op :op :-}) (swap! i inc) (recur))
+            (= ch "*") (do (swap! tokens conj {:type :op :op :*}) (swap! i inc) (recur))
+            (= ch "/") (do (swap! tokens conj {:type :op :op :/}) (swap! i inc) (recur))
+            (= ch "^") (do (swap! tokens conj {:type :op :op :^}) (swap! i inc) (recur))
+            (str/digit? ch)
+              (let [num-str (atom (str ch))]
+                (loop [j (inc @i)]
+                  (if (and (< j (count s)) (str/digit? (get s j)))
+                    (do
+                      (swap! num-str (fn [n] (str n (get s j))))
+                      (recur (inc j)))
+                    (do
+                      (swap! tokens conj {:type :num :value (Integer/parseInt @num-str)})
+                      (reset! i j)
+                      (recur)))))
+            (str/alpha? ch)
+              (let [var-name (atom (str ch))]
+                (loop [j (inc @i)]
+                  (if (and (< j (count s)) (str/alpha? (get s j)))
+                    (do
+                      (swap! var-name (fn [n] (str n (get s j))))
+                      (recur (inc j)))
+                    (do
+                      (swap! tokens conj {:type :var :name @var-name})
+                      (reset! i j)
+                      (recur)))))
+            :else (do (swap! i inc) (recur)))))))
+
+; 식 파싱 (재귀 하강 파서)
+(defn parse-expr [tokens]
+  "Parse expression from tokens"
+  (let [pos (atom 0)]
+    (letfn [(parse-primary []
+              (let [token (nth tokens @pos)]
+                (cond
+                  (= (:type token) :num)
+                    (do (swap! pos inc) (const-expr (:value token)))
+                  (= (:type token) :var)
+                    (do (swap! pos inc) (var-expr (:name token)))
+                  (= (:type token) :lparen)
+                    (do
+                      (swap! pos inc)
+                      (let [expr (parse-addition)]
+                        (swap! pos inc) ; skip )
+                        expr)))))
+
+            (parse-power []
+              (let [left (parse-primary)]
+                (if (and (< @pos (count tokens))
+                        (= (:type (nth tokens @pos)) :op)
+                        (= (:op (nth tokens @pos)) :^))
+                  (do
+                    (swap! pos inc)
+                    (binop-expr :^ left (parse-power)))
+                  left)))
+
+            (parse-multiplication []
+              (loop [left (parse-power)]
+                (if (and (< @pos (count tokens))
+                        (= (:type (nth tokens @pos)) :op)
+                        (or (= (:op (nth tokens @pos)) :*)
+                            (= (:op (nth tokens @pos)) :/)))
+                  (let [op (:op (nth tokens @pos))]
+                    (swap! pos inc)
+                    (recur (binop-expr op left (parse-power))))
+                  left)))
+
+            (parse-addition []
+              (loop [left (parse-multiplication)]
+                (if (and (< @pos (count tokens))
+                        (= (:type (nth tokens @pos)) :op)
+                        (or (= (:op (nth tokens @pos)) :+)
+                            (= (:op (nth tokens @pos)) :-)))
+                  (let [op (:op (nth tokens @pos))]
+                    (swap! pos inc)
+                    (recur (binop-expr op left (parse-multiplication))))
+                  left)))]
+
+      (parse-addition))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Expression Evaluation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 값 계산 (변수 대입)
+(defn eval-expr [expr vars]
+  "Evaluate expression with variable bindings"
+  (case (:type expr)
+    :const (:value expr)
+    :var (get vars (:name expr))
+    :binop
+      (let [left (eval-expr (:left expr) vars)
+            right (eval-expr (:right expr) vars)]
+        (case (:op expr)
+          :+ (+ left right)
+          :- (- left right)
+          :* (* left right)
+          :/ (/ left right)
+          :^ (Math/pow left right)))
+    :unop
+      (let [arg (eval-expr (:arg expr) vars)]
+        (case (:op expr)
+          :- (- arg)
+          :sin (Math/sin arg)
+          :cos (Math/cos arg)
+          :sqrt (Math/sqrt arg)
+          :exp (Math/exp arg)
+          :log (Math/log arg)))
+    :func
+      (let [args (map (fn [arg] (eval-expr arg vars)) (:args expr))]
+        (case (:name expr)
+          "sin" (Math/sin (first args))
+          "cos" (Math/cos (first args))
+          "sqrt" (Math/sqrt (first args))
+          "abs" (Math/abs (first args))))
+    0))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Expression Inspection
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 변수 추출
+(defn extract-vars [expr]
+  "Extract all variables from expression"
+  (case (:type expr)
+    :const #{}
+    :var #{(:name expr)}
+    :binop
+      (clojure.set/union
+        (extract-vars (:left expr))
+        (extract-vars (:right expr)))
+    :unop (extract-vars (:arg expr))
+    :func (apply clojure.set/union (map extract-vars (:args expr)))
+    #{}))
+
+; 깊이 계산
+(defn expr-depth [expr]
+  "Calculate expression tree depth"
+  (case (:type expr)
+    :const 0
+    :var 0
+    :binop
+      (inc (max (expr-depth (:left expr))
+                (expr-depth (:right expr))))
+    :unop (inc (expr-depth (:arg expr)))
+    :func (inc (apply max (map expr-depth (:args expr))))
+    0))
+
+; 크기 계산
+(defn expr-size [expr]
+  "Calculate expression tree size (node count)"
+  (case (:type expr)
+    :const 1
+    :var 1
+    :binop
+      (+ 1 (expr-size (:left expr)) (expr-size (:right expr)))
+    :unop (+ 1 (expr-size (:arg expr)))
+    :func (+ 1 (apply + (map expr-size (:args expr))))
+    0))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Expression String Representation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 식을 문자열로 변환
+(defn expr-to-string [expr &:key [parens false]]
+  "Convert expression to string"
+  (case (:type expr)
+    :const (str (:value expr))
+    :var (:name expr)
+    :binop
+      (let [left-str (expr-to-string (:left expr) :parens true)
+            right-str (expr-to-string (:right expr) :parens true)
+            result (str left-str " " (name (:op expr)) " " right-str)]
+        (if parens (str "(" result ")") result))
+    :unop
+      (let [arg-str (expr-to-string (:arg expr) :parens true)
+            result (str (name (:op expr)) "(" arg-str ")")]
+        (if parens result result))
+    :func
+      (str (:name expr) "("
+        (str/join ", " (map (fn [arg] (expr-to-string arg)) (:args expr)))
+        ")")
+    ""))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Expression Builder Helpers
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 편의 함수들
+(defn + [& args]
+  "Add expressions"
+  (reduce (fn [left right]
+    (if (nil? left) right (binop-expr :+ left right)))
+    nil args))
+
+(defn - [& args]
+  "Subtract expressions"
+  (if (= (count args) 1)
+    (unop-expr :- (first args))
+    (reduce (fn [left right]
+      (if (nil? left) right (binop-expr :- left right)))
+      nil args)))
+
+(defn * [& args]
+  "Multiply expressions"
+  (reduce (fn [left right]
+    (if (nil? left) right (binop-expr :* left right)))
+    nil args))
+
+(defn / [& args]
+  "Divide expressions"
+  (reduce (fn [left right]
+    (if (nil? left) right (binop-expr :/ left right)))
+    nil args))
+
+(defn ^ [base power]
+  "Power expression"
+  (binop-expr :^ base power))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Expression Trees (Phase 159) loaded")

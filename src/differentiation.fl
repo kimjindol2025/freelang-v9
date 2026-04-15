@@ -1,0 +1,242 @@
+; ============================================================================
+; FreeLang v9 — Phase 159: Automatic Differentiation
+; 자동 미분, 편미분, 체인 규칙
+; ============================================================================
+
+(load "src/expression.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Symbolic Differentiation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 식을 변수에 대해 미분
+(defn differentiate [expr var]
+  "Differentiate expression symbolically with respect to variable"
+  (case (:type expr)
+    ; d/dx(c) = 0
+    :const (const-expr 0)
+
+    ; d/dx(x) = 1, d/dx(y) = 0
+    :var (if (= (:name expr) var)
+          (const-expr 1)
+          (const-expr 0))
+
+    ; 이항 연산자
+    :binop
+      (case (:op expr)
+        ; d/dx(u + v) = du/dx + dv/dx
+        :+
+          (binop-expr :+
+            (differentiate (:left expr) var)
+            (differentiate (:right expr) var))
+
+        ; d/dx(u - v) = du/dx - dv/dx
+        :-
+          (binop-expr :-
+            (differentiate (:left expr) var)
+            (differentiate (:right expr) var))
+
+        ; d/dx(u * v) = u * dv/dx + v * du/dx (곱의 규칙)
+        :*
+          (binop-expr :+
+            (binop-expr :*
+              (:left expr)
+              (differentiate (:right expr) var))
+            (binop-expr :*
+              (:right expr)
+              (differentiate (:left expr) var)))
+
+        ; d/dx(u / v) = (v * du/dx - u * dv/dx) / v^2 (몫의 규칙)
+        :/
+          (binop-expr :/
+            (binop-expr :-
+              (binop-expr :*
+                (:right expr)
+                (differentiate (:left expr) var))
+              (binop-expr :*
+                (:left expr)
+                (differentiate (:right expr) var)))
+            (binop-expr :^
+              (:right expr)
+              (const-expr 2)))
+
+        ; d/dx(u ^ n) = n * u^(n-1) * du/dx (거듭제곱 규칙)
+        :^
+          (binop-expr :*
+            (binop-expr :*
+              (:right expr)
+              (binop-expr :^
+                (:left expr)
+                (binop-expr :-
+                  (:right expr)
+                  (const-expr 1))))
+            (differentiate (:left expr) var)))
+
+    ; 단항 연산자
+    :unop
+      (case (:op expr)
+        ; d/dx(-u) = -du/dx
+        :- (unop-expr :- (differentiate (:arg expr) var))
+        ; d/dx(sin u) = cos(u) * du/dx
+        :sin (binop-expr :*
+              (unop-expr :cos (:arg expr))
+              (differentiate (:arg expr) var))
+        ; d/dx(cos u) = -sin(u) * du/dx
+        :cos (binop-expr :*
+              (unop-expr :- (unop-expr :sin (:arg expr)))
+              (differentiate (:arg expr) var))
+        ; d/dx(sqrt u) = 1/(2*sqrt(u)) * du/dx
+        :sqrt (binop-expr :*
+                (binop-expr :/
+                  (const-expr 1)
+                  (binop-expr :*
+                    (const-expr 2)
+                    (unop-expr :sqrt (:arg expr))))
+                (differentiate (:arg expr) var))
+        ; d/dx(exp u) = exp(u) * du/dx
+        :exp (binop-expr :*
+              (unop-expr :exp (:arg expr))
+              (differentiate (:arg expr) var))
+        ; d/dx(log u) = 1/u * du/dx
+        :log (binop-expr :*
+              (binop-expr :/
+                (const-expr 1)
+                (:arg expr))
+              (differentiate (:arg expr) var)))
+
+    ; 함수 호출
+    :func
+      (case (:name expr)
+        "sin" (binop-expr :*
+                (func-expr "cos" (:args expr))
+                (differentiate (first (:args expr)) var))
+        "cos" (binop-expr :*
+                (unop-expr :-
+                  (func-expr "sin" (:args expr)))
+                (differentiate (first (:args expr)) var))
+        "sqrt" (binop-expr :*
+                (binop-expr :/
+                  (const-expr 1)
+                  (binop-expr :*
+                    (const-expr 2)
+                    expr))
+                (differentiate (first (:args expr)) var))
+        "abs" (binop-expr :*
+                (binop-expr :/
+                  expr
+                  (first (:args expr)))
+                (differentiate (first (:args expr)) var))
+        (const-expr 0))
+
+    (const-expr 0)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Partial Derivatives
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 편미분 계산 (다변수)
+(defn partial-derivative [expr var]
+  "Calculate partial derivative with respect to variable"
+  (differentiate expr var))
+
+; 그래디언트 계산 (모든 변수에 대한 편미분)
+(defn gradient [expr]
+  "Compute gradient (partial derivatives for all variables)"
+  (let [vars (extract-vars expr)]
+    (reduce (fn [grad var]
+      (assoc grad var (differentiate expr var)))
+      {}
+      vars)))
+
+; 헤시안 행렬 (2차 편미분)
+(defn hessian [expr]
+  "Compute Hessian matrix (second partial derivatives)"
+  (let [vars (extract-vars expr)
+        var-list (vec vars)]
+    (reduce (fn [h i]
+      (let [var-i (nth var-list i)]
+        (assoc h var-i
+          (reduce (fn [row j]
+            (let [var-j (nth var-list j)]
+              (assoc row var-j
+                (differentiate
+                  (differentiate expr var-i)
+                  var-j))))
+            {}
+            (range (count var-list))))))
+      {}
+      (range (count var-list)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Numerical Differentiation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 수치 미분 (유한 차분)
+(defn numerical-derivative [expr var value &:key [epsilon 1e-5]]
+  "Compute numerical derivative using finite differences"
+  (let [f+ (eval-expr expr (assoc {} var (+ value epsilon)))
+        f- (eval-expr expr (assoc {} var (- value epsilon)))]
+    (/ (- f+ f-) (* 2 epsilon))))
+
+; 수치 그래디언트
+(defn numerical-gradient [expr values &:key [epsilon 1e-5]]
+  "Compute numerical gradient at point"
+  (let [vars (extract-vars expr)]
+    (reduce (fn [grad var]
+      (let [val (get values var)
+            f+ (eval-expr expr (assoc values var (+ val epsilon)))
+            f- (eval-expr expr (assoc values var (- val epsilon)))]
+        (assoc grad var (/ (- f+ f-) (* 2 epsilon)))))
+      {}
+      vars)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Higher-order Derivatives
+; ─────────────────────────────────────────────────────────────────────────────
+
+; n차 미분
+(defn nth-derivative [expr var n]
+  "Compute nth derivative"
+  (if (<= n 0)
+    expr
+    (recur (differentiate expr var) var (dec n))))
+
+; 혼합 편미분
+(defn mixed-partial [expr vars]
+  "Compute mixed partial derivative"
+  (reduce (fn [e var]
+    (differentiate e var))
+    expr
+    vars))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Differentiation Rules Verification
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 수치-기호 미분 비교 (검증)
+(defn verify-derivative [expr var value &:key [epsilon 1e-5] [tolerance 1e-3]]
+  "Verify symbolic derivative against numerical derivative"
+  (let [symbolic (eval-expr (differentiate expr var) {var value})
+        numerical (numerical-derivative expr var value :epsilon epsilon)
+        error (Math/abs (- symbolic numerical))]
+    {:symbolic symbolic
+     :numerical numerical
+     :error error
+     :verified (< error tolerance)}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Derivative Composition
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 체인 규칙 (합성 함수 미분)
+(defn chain-rule [f g var]
+  "Apply chain rule: d/dx(f(g(x))) = f'(g(x)) * g'(x)"
+  (binop-expr :*
+    (differentiate f var)
+    (differentiate g var)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Automatic Differentiation (Phase 159) loaded")
