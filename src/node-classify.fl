@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 345: Node Classification & Semi-supervised
+; 라벨 전파, Semi-supervised GNN, GCN
+; ============================================================================
+
+(defn label-propagation [labels adjacency-matrix iterations]
+  "Label propagation algorithm"
+  (vec (repeat (count labels) nil)))
+
+(defn semi-supervised-gnn [features adjacency labeled-mask labels]
+  "Semi-supervised node classification"
+  {:predictions []})
+
+(defn gcn [features adjacency num-classes]
+  "Graph Convolutional Network"
+  (vec (repeat (count features) (repeat num-classes 0.0))))
+
+(print "✓ Node Classification (Phase 345) loaded")

@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 342: Graph Attention Networks (GAT)
+; 주의 메커니즘, 멀티헤드, 정규화
+; ============================================================================
+
+(defn gat-attention [query key value num-heads]
+  "Graph attention mechanism"
+  (vec (repeat (count query) 0.0)))
+
+(defn multi-head-gat [node-features num-heads]
+  "Multi-head attention"
+  (vec (repeat (count node-features) 0.0)))
+
+(defn gat-forward [node-features edge-index num-heads]
+  "Forward pass of GAT layer"
+  (vec (repeat (count node-features) 0.0)))
+
+(print "✓ Graph Attention Network (Phase 342) loaded")

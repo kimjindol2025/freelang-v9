@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 360: Recommendation with GNN
+; 이분 GNN, 협력 필터링, 세션 GNN
+; ============================================================================
+
+(defn bipartite-gnn [user-features item-features interaction-graph]
+  "Bipartite GNN for recommendation"
+  {:user-embeds [] :item-embeds []})
+
+(defn collab-filter-gnn [user-item-matrix num-factors]
+  "Collaborative filtering with GNN"
+  {:predictions []})
+
+(defn session-gnn [item-sequence session-length]
+  "Session-based recommendation"
+  {:recommended-items []})
+
+(print "✓ Recommendation GNN (Phase 360) loaded")

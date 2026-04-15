@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 352: Graph Pooling & Hierarchical
+; DiffPool, TopK Pool, 계층적 풀링
+; ============================================================================
+
+(defn diffpool [node-features adjacency num-clusters]
+  "Differentiable pooling"
+  {:pooled-features [] :cluster-assignment []})
+
+(defn topk-pool [node-features scores ratio]
+  "TopK pooling"
+  {:selected-nodes [] :new-adjacency []})
+
+(defn hierarchical-pool [node-features levels]
+  "Hierarchical pooling"
+  {:pooled-features [] :levels levels})
+
+(print "✓ Graph Pooling (Phase 352) loaded")

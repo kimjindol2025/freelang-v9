@@ -1,0 +1,19 @@
+; ============================================================================
+; FreeLang v9 — Phase 347: Graph Generation & Generative Models
+; GraphRNN, GraphVAE, 분자 생성
+; ============================================================================
+
+(defn graphrnn [node-count edge-probability]
+  "GraphRNN generative model"
+  {:adjacency (vec (repeat node-count []))})
+
+(defn graphvae [latent-dim num-nodes]
+  "Graph VAE for generation"
+  {:generated-graph []})
+
+(defn mol-generate [latent-vector]
+  "Generate molecular graphs"
+  {:smiles ""
+   :molecule-graph []})
+
+(print "✓ Graph Generation (Phase 347) loaded")

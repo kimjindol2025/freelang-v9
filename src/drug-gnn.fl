@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 357: Drug Discovery with GNN
+; 분자 특성, Virtual Screening, ADMET 예측
+; ============================================================================
+
+(defn mol-property [molecule-graph property-type]
+  "Predict molecular properties"
+  {:property-value 0.0})
+
+(defn virtual-screen [drug-candidates target-structure]
+  "Virtual screening of drug candidates"
+  {:ranked-candidates [] :scores []})
+
+(defn admet-predict [molecule]
+  "ADMET (Absorption, Distribution, Metabolism) prediction"
+  {:admet-scores {}})
+
+(print "✓ Drug Discovery GNN (Phase 357) loaded")

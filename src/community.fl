@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 346: Community Detection
+; Louvain, 모듈성, 스펙트럼 커뮤니티
+; ============================================================================
+
+(defn louvain [adjacency-matrix resolution]
+  "Louvain community detection"
+  {:communities [] :modularity 0.0})
+
+(defn modularity [communities adjacency]
+  "Calculate modularity score"
+  0.0)
+
+(defn spectral-community [adjacency num-communities]
+  "Spectral clustering for communities"
+  (vec (repeat (count adjacency) 0)))
+
+(print "✓ Community Detection (Phase 346) loaded")

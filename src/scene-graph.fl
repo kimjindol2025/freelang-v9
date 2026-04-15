@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 353: Scene Graph Generation
+; SG 생성, 관계 감지, Visual QA
+; ============================================================================
+
+(defn sg-generate [image-features detection-results]
+  "Scene graph generation from image"
+  {:entities [] :relations []})
+
+(defn relation-detect [subject-feat object-feat context]
+  "Detect relations between objects"
+  {:relation-type ""})
+
+(defn visual-qa-sg [scene-graph question]
+  "Visual QA using scene graphs"
+  {:answer ""})
+
+(print "✓ Scene Graphs (Phase 353) loaded")

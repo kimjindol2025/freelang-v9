@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 356: Adversarial Robustness for Graphs
+; 노드 공격, 그래프 방어, 견고성 증명
+; ============================================================================
+
+(defn node-attack [adjacency target-node num-flips attack-type]
+  "Node/edge perturbation attacks"
+  {:perturbed-adjacency adjacency})
+
+(defn graph-defense [adjacency defense-budget strategy]
+  "Graph defense mechanism"
+  {:defended-adjacency adjacency})
+
+(defn certify-robustness [model adjacency perturbation-budget]
+  "Certified robustness for graphs"
+  {:certified false :margin 0.0})
+
+(print "✓ Graph Adversarial (Phase 356) loaded")

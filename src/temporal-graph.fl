@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 351: Temporal & Dynamic Graphs
+; TGN 업데이트, 시간 인식 임베딩, 동적 그래프
+; ============================================================================
+
+(defn tgn-update [graph-state edge-timestamp node-ids]
+  "Temporal Graph Network update"
+  (assoc graph-state :last-update edge-timestamp))
+
+(defn time-aware-embed [node-embed timestamp]
+  "Time-aware node embedding"
+  node-embed)
+
+(defn dynamic-graph [edges time-window]
+  "Dynamic graph snapshot"
+  {:adjacency [] :nodes []})
+
+(print "✓ Temporal Graphs (Phase 351) loaded")

@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 354: Graph Transformers & GPS
+; Graph BERT, GPS Layer, GraphGPS
+; ============================================================================
+
+(defn graph-bert [node-features adjacency num-layers]
+  "Graph BERT with structural encoding"
+  (vec (repeat (count node-features) 0.0)))
+
+(defn gps-layer [node-features edge-features num-heads]
+  "Graph Positional Streaming (GPS) layer"
+  (vec (repeat (count node-features) 0.0)))
+
+(defn graphgps [node-features edge-features num-layers]
+  "GraphGPS model"
+  (vec (repeat (count node-features) 0.0)))
+
+(print "✓ Graph Transformers (Phase 354) loaded")

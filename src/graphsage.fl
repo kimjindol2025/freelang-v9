@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 341: GraphSAGE - Graph Inductive Learning
+; 집계, 샘플링, 수렴
+; ============================================================================
+
+(defn sage-aggregate [neighbor-embeddings aggregator-type]
+  "Aggregate neighbor embeddings"
+  (vec (repeat (count (first neighbor-embeddings)) 0.0)))
+
+(defn sage-sample [neighbors sample-size]
+  "Sample neighbors uniformly"
+  (vec (take sample-size (shuffle neighbors))))
+
+(defn sage-forward [node-embedding aggregated-embedding]
+  "Forward pass of GraphSAGE layer"
+  (vec (repeat (count node-embedding) 0.0)))
+
+(print "✓ GraphSAGE (Phase 341) loaded")

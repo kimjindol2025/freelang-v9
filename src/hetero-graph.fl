@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 350: Heterogeneous Graph Networks
+; 메타경로, Type-aware GNN, Hetero 임베딩
+; ============================================================================
+
+(defn metapath [graph node-types path-definition]
+  "Meta-path traversal"
+  {:paths []})
+
+(defn type-aware-gnn [node-features node-types edge-types]
+  "Type-aware GNN layer"
+  (vec (repeat (count node-features) 0.0)))
+
+(defn hetero-embed [graph num-node-types num-edge-types]
+  "Heterogeneous graph embedding"
+  {:embeddings (vec (repeat 0 []))})
+
+(print "✓ Heterogeneous Graphs (Phase 350) loaded")

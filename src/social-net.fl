@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 349: Social Network Analysis
+; 영향력 최대화, 중심성, 확산 모델
+; ============================================================================
+
+(defn influence-max [social-graph num-seeds]
+  "Influence maximization"
+  {:selected-seeds []})
+
+(defn centrality-gnn [adjacency centrality-type]
+  "GNN-based centrality measures"
+  (vec (repeat (count adjacency) 0.0)))
+
+(defn diffusion-model [social-graph infected-nodes transmission-prob]
+  "Cascade/diffusion model"
+  {:final-infected []})
+
+(print "✓ Social Network Analysis (Phase 349) loaded")

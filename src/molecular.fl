@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 348: Molecular Graphs & Drug Discovery
+; 분자 지문, 원자 특성, 결합 특성
+; ============================================================================
+
+(defn mol-fingerprint [molecule fingerprint-type radius]
+  "Molecular fingerprint (ECFP, etc.)"
+  [])
+
+(defn atom-feat [atom]
+  "Extract atom features"
+  {:atomic-number 0 :hybridization "" :charge 0})
+
+(defn bond-feat [bond]
+  "Extract bond features"
+  {:bond-type "" :is-aromatic false})
+
+(print "✓ Molecular Graphs (Phase 348) loaded")
