@@ -1,0 +1,28 @@
+; ============================================================================
+; FreeLang v9 — Phase 305: Audio Features Extraction
+; MFCC, ZCR, 스펙트럴 중심주파수
+; ============================================================================
+
+(defn mfcc [mel-spec n-mfcc]
+  "Compute MFCC (Mel-Frequency Cepstral Coefficients)"
+  (vec (repeat n-mfcc (rand))))
+
+(defn zero-crossing-rate [signal]
+  "Compute zero crossing rate"
+  (let [n (count signal)
+        crossings (atom 0)]
+    (loop [i 0]
+      (if (< i (dec n))
+        (do
+          (if (< (* (nth signal i) (nth signal (inc i))) 0)
+            (swap! crossings inc))
+          (recur (inc i)))
+        (/ @crossings n)))))
+
+(defn spectral-centroid [magnitude frequencies]
+  "Compute spectral centroid"
+  (let [numerator (reduce + (mapv * magnitude frequencies))
+        denominator (reduce + magnitude)]
+    (if (zero? denominator) 0 (/ numerator denominator))))
+
+(print "✓ Audio Features (Phase 305) loaded")

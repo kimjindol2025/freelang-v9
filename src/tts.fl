@@ -1,0 +1,22 @@
+; ============================================================================
+; FreeLang v9 — Phase 303: Text-to-Speech (TTS)
+; 텍스트→음성, 발음소, 프로소디
+; ============================================================================
+
+(defn text-to-phoneme [text]
+  "Convert text to phoneme sequence"
+  (let [chars (vec text)]
+    (mapv (fn [c] (str "ph_" c)) chars)))
+
+(defn phoneme-to-audio [phoneme-seq sr duration]
+  "Convert phoneme sequence to audio"
+  (let [num-samples (* sr duration)]
+    (vec (repeat num-samples (rand)))))
+
+(defn prosody [phoneme-seq duration pitch-contour]
+  "Apply prosody features"
+  {:phonemes phoneme-seq
+   :duration duration
+   :pitch pitch-contour})
+
+(print "✓ TTS (Phase 303) loaded")

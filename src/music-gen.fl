@@ -1,0 +1,19 @@
+; ============================================================================
+; FreeLang v9 — Phase 308: Music Generation & Composition
+; 음표 수열, 화성 진행, 리듬 패턴
+; ============================================================================
+
+(defn note-sequence [notes durations]
+  "Create note sequence with durations"
+  (mapv vector notes durations))
+
+(defn chord-progression [root-note chords]
+  "Generate chord progression"
+  (mapv (fn [chord-name] [root-note chord-name]) chords))
+
+(defn rhythm-pattern [time-signature beats]
+  "Define rhythm pattern"
+  {:time-sig time-signature
+   :pattern beats})
+
+(print "✓ Music Generation (Phase 308) loaded")

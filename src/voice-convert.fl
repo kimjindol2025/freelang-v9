@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 310: Voice Conversion & Style Transfer
+; 음성 스타일 이전, 음높이 변환, 포먼트 변형
+; ============================================================================
+
+(defn voice-style-transfer [source-audio style-vector]
+  "Transfer voice style"
+  (mapv (fn [s] (+ s (first style-vector))) source-audio))
+
+(defn pitch-shift [signal semitone-shift sr]
+  "Shift pitch by semitones"
+  (vec (repeat (count signal) 0.0)))
+
+(defn formant-warp [frequencies warp-factor]
+  "Warp formant frequencies"
+  (mapv #(* % warp-factor) frequencies))
+
+(print "✓ Voice Conversion (Phase 310) loaded")

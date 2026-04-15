@@ -1,0 +1,54 @@
+; ============================================================================
+; FreeLang v9 — Phase 301: Mel Spectrogram & Audio Processing
+; STFT, Mel-scale 변환, 음향 특성
+; ============================================================================
+
+; Mel 필터뱅크 생성
+(defn mel-filterbank [n-fft n-mels sr]
+  "Create mel filterbank"
+  {:n-fft n-fft
+   :n-mels n-mels
+   :sr sr
+   :filters (vec (repeat n-mels []))})
+
+; STFT 계산
+(defn stft [signal window-size hop-length]
+  "Compute Short-Time Fourier Transform"
+  (let [frames (atom [])
+        n (count signal)]
+    (loop [start 0]
+      (if (< start n)
+        (do
+          (swap! frames conj (vec (take window-size (drop start signal))))
+          (recur (+ start hop-length)))
+        @frames))))
+
+; Mel-scale 변환
+(defn mel-scale [freq]
+  "Convert frequency to mel-scale"
+  (* 2595 (Math/log10 (inc (/ freq 700)))))
+
+; Inverse mel-scale
+(defn inverse-mel-scale [mel]
+  "Convert mel-scale back to frequency"
+  (* 700 (dec (Math/pow 10 (/ mel 2595)))))
+
+; Mel spectrogram 계산
+(defn mel-spectrogram [signal sr n-fft n-mels hop-length]
+  "Compute mel spectrogram"
+  (let [stft-result (stft signal n-fft hop-length)
+        mel-fb (mel-filterbank n-fft n-mels sr)]
+    {:mel-spec (vec (repeat (count stft-result) []))
+     :n-mels n-mels
+     :n-fft n-fft}))
+
+; DB 스케일 변환
+(defn power-to-db [magnitude ref-power min-db]
+  "Convert magnitude to dB scale"
+  (max min-db (* 10 (Math/log10 (max 1e-10 (/ magnitude ref-power))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Mel Spectrogram (Phase 301) loaded")

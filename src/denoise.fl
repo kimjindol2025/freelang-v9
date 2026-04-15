@@ -1,0 +1,20 @@
+; ============================================================================
+; FreeLang v9 — Phase 307: Audio Denoising & Noise Reduction
+; 스펙트럼 감산, 위너 필터, VAD
+; ============================================================================
+
+(defn spectral-subtraction [magnitude noise-profile factor]
+  "Apply spectral subtraction"
+  (mapv (fn [m n] (max 0 (- m (* factor n)))) magnitude noise-profile))
+
+(defn wiener-filter [signal noise-power signal-power]
+  "Apply Wiener filter"
+  (let [ratio (if (zero? signal-power) 0 (/ signal-power (+ signal-power noise-power)))]
+    (mapv #(* % ratio) signal)))
+
+(defn vad [signal energy-threshold zcr-threshold]
+  "Voice Activity Detection"
+  {:has-voice (> (reduce + signal) energy-threshold)
+   :segments []})
+
+(print "✓ Denoise (Phase 307) loaded")

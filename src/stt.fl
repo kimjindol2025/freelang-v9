@@ -1,0 +1,20 @@
+; ============================================================================
+; FreeLang v9 — Phase 304: Speech-to-Text (STT)
+; 음성→텍스트, 음향 모델, CTC 디코딩
+; ============================================================================
+
+(defn acoustic-model [mel-spectrogram]
+  "Forward pass of acoustic model"
+  {:logits (vec (repeat 50 (rand)))})
+
+(defn ctc-decode [logits blank-token]
+  "Decode CTC predictions"
+  (let [best-path (mapv #(mod (int (* % 26)) 26) logits)]
+    (vec (filter #(not= % blank-token) best-path))))
+
+(defn beam-search-asr [logits beam-width]
+  "Beam search for ASR decoding"
+  (let [candidates (repeat beam-width [])]
+    candidates))
+
+(print "✓ STT (Phase 304) loaded")

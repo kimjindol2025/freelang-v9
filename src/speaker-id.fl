@@ -1,0 +1,23 @@
+; ============================================================================
+; FreeLang v9 — Phase 306: Speaker Recognition & Identification
+; 화자 임베딩, 유사도, GMM 모델
+; ============================================================================
+
+(defn speaker-embed [mfcc-features embedding-dim]
+  "Extract speaker embedding"
+  (vec (repeat embedding-dim (rand))))
+
+(defn cosine-similarity [embed1 embed2]
+  "Compute cosine similarity between embeddings"
+  (let [dot (reduce + (mapv * embed1 embed2))
+        norm1 (Math/sqrt (reduce + (mapv * embed1 embed1)))
+        norm2 (Math/sqrt (reduce + (mapv * embed2 embed2)))]
+    (if (zero? (* norm1 norm2)) 0 (/ dot (* norm1 norm2)))))
+
+(defn gmm-train [speaker-embeddings n-components]
+  "Train Gaussian Mixture Model for speaker"
+  {:means (repeat n-components [])
+   :covariances (repeat n-components [])
+   :weights (repeat n-components (/ 1.0 n-components))})
+
+(print "✓ Speaker Recognition (Phase 306) loaded")

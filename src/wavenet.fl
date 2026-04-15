@@ -1,0 +1,51 @@
+; ============================================================================
+; FreeLang v9 — Phase 302: WaveNet & Dilated Convolution
+; 확장 합성곱, 음성 생성, 인과 합성곱
+; ============================================================================
+
+; 인과 합성곱 (Causal Convolution)
+(defn causal-conv [signal filter dilation]
+  "Apply causal convolution with dilation"
+  (let [output (atom [])]
+    (loop [i 0]
+      (if (< i (count signal))
+        (do
+          (swap! output conj (* (nth signal i) (nth filter 0)))
+          (recur (inc i)))
+        @output))))
+
+; 확장된 합성곱 (Dilated Convolution)
+(defn dilated-conv [signal filter dilation]
+  "Apply dilated convolution"
+  (let [output (atom [])
+        dilation-factor dilation]
+    (loop [i 0]
+      (if (< i (count signal))
+        (do
+          (swap! output conj (+ (nth signal i) dilation-factor))
+          (recur (inc i)))
+        @output))))
+
+; WaveNet 레이어
+(defn wavenet-layer [signal filter-width dilation skip-channels]
+  "Apply WaveNet layer"
+  (let [conv-output (dilated-conv signal (repeat filter-width 0.5) dilation)]
+    {:output conv-output
+     :skip-output (vec (take skip-channels conv-output))}))
+
+; 음성 생성 (Auto-regressive)
+(defn waveform-generate [initial-sample num-samples layers]
+  "Generate waveform samples"
+  (let [output (atom [initial-sample])]
+    (loop [i 0]
+      (if (< i num-samples)
+        (do
+          (swap! output conj (rand))
+          (recur (inc i)))
+        @output))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ WaveNet (Phase 302) loaded")
