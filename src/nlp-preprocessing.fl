@@ -1,0 +1,49 @@
+; ============================================================================
+; FreeLang v9 — Phase 169: NLP Preprocessing
+; 토큰화, 스테밍, 정규화
+; ============================================================================
+
+; 간단한 토큰화
+(defn tokenize [text]
+  "Simple word tokenization"
+  (let [cleaned (clojure.string/replace (str text) #"[^\w\s]" "")]
+    (filter (fn [s] (> (count s) 0))
+      (clojure.string/split (clojure.string/lower-case cleaned) #"\s+"))))
+
+; 단어 정규화
+(defn normalize-text [text]
+  "Normalize text"
+  (-> (str text)
+    (clojure.string/lower-case)
+    (clojure.string/replace #"\s+" " ")
+    (clojure.string/trim)))
+
+; 불용어 제거 (영어)
+(defn remove-stopwords [tokens]
+  "Remove common stopwords"
+  (let [stopwords #{"the" "a" "an" "and" "or" "is" "are" "was" "were"}]
+    (filter (fn [word] (not (contains? stopwords word))) tokens)))
+
+; N-gram 생성
+(defn generate-ngrams [tokens n]
+  "Generate n-grams"
+  (let [result (atom [])]
+    (loop [i 0]
+      (if (<= (+ i n) (count tokens))
+        (do
+          (swap! result conj (vec (subvec (vec tokens) i (+ i n))))
+          (recur (inc i)))))
+    @result))
+
+; TF-IDF 단어 가중치
+(defn calculate-tf [tokens]
+  "Calculate term frequency"
+  (let [word-count (atom {})]
+    (doseq [token tokens]
+      (swap! word-count update token (fn [v] (if (nil? v) 1 (inc v)))))
+    (let [total (count tokens)]
+      (into {} (map (fn [[word count]]
+        [word (/ count total)])
+        @word-count)))))
+
+(print "✓ NLP Preprocessing (Phase 169) loaded")

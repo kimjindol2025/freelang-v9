@@ -1,0 +1,73 @@
+; ============================================================================
+; FreeLang v9 — Phase 168: String Algorithms
+; KMP, Boyer-Moore, Z-algorithm
+; ============================================================================
+
+; KMP 알고리즘
+(defn kmp-search [text pattern]
+  "KMP string searching"
+  (let [t-len (count text)
+        p-len (count pattern)
+        lps (atom (vec (repeat p-len 0)))]
+    ; LPS 배열 구축
+    (let [j (atom 0)]
+      (doseq [i (range 1 p-len)]
+        (loop []
+          (if (and (> @j 0) (not (= (nth (str pattern) @j) (nth (str pattern) i))))
+            (do
+              (reset! j (nth @lps (dec @j)))
+              (recur))))
+        (if (= (nth (str pattern) @j) (nth (str pattern) i))
+          (swap! j inc))
+        (swap! lps assoc i @j)))
+    ; 검색
+    (let [results (atom [])]
+      (let [j (atom 0)]
+        (doseq [i (range t-len)]
+          (loop []
+            (if (and (> @j 0) (not (= (nth (str pattern) @j) (nth (str text) i))))
+              (do
+                (reset! j (nth @lps (dec @j)))
+                (recur))))
+          (if (= (nth (str pattern) @j) (nth (str text) i))
+            (swap! j inc))
+          (if (= @j p-len)
+            (do
+              (swap! results conj (- i p-len -1))
+              (reset! j (nth @lps (dec @j)))))))
+      @results)))
+
+; 가장 긴 팰린드롬 찾기
+(defn longest-palindrome [s]
+  "Find longest palindromic substring"
+  (let [n (count s)
+        max-len (atom 0)
+        start (atom 0)]
+    (doseq [i (range n)]
+      ; 홀수 길이 팰린드롬
+      (let [left (atom i) right (atom i)]
+        (loop []
+          (if (and (>= @left 0) (< @right n) (= (nth (str s) @left) (nth (str s) @right)))
+            (do
+              (if (> (- @right @left 1) @max-len)
+                (do
+                  (reset! max-len (- @right @left 1))
+                  (reset! start (inc @left))))
+              (swap! left dec)
+              (swap! right inc)
+              (recur)))))
+      ; 짝수 길이 팰린드롬
+      (let [left (atom i) right (atom (inc i))]
+        (loop []
+          (if (and (>= @left 0) (< @right n) (= (nth (str s) @left) (nth (str s) @right)))
+            (do
+              (if (>= (- @right @left 1) @max-len)
+                (do
+                  (reset! max-len (- @right @left 1))
+                  (reset! start @left)))
+              (swap! left dec)
+              (swap! right inc)
+              (recur))))))
+    (subs (str s) @start (+ @start @max-len 1))))
+
+(print "✓ String Algorithms (Phase 168) loaded")

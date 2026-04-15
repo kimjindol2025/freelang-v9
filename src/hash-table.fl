@@ -1,0 +1,153 @@
+; ============================================================================
+; FreeLang v9 — Phase 163: Hash Tables & Collision Handling
+; 해시 함수, 선형 탐사, 체이닝, 리해싱
+; ============================================================================
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Hash Function & Basic Operations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 해시 함수 (문자열)
+(defn hash-function [key capacity]
+  "Simple hash function"
+  (let [sum (reduce (fn [s c]
+              (+ s (int (first (str c)))))
+            0
+            (str key))]
+    (mod sum capacity)))
+
+; 체이닝 기반 해시 테이블 생성
+(defn create-hash-table [capacity]
+  "Create hash table with chaining"
+  {:type :hash-table
+   :capacity capacity
+   :size (atom 0)
+   :buckets (atom (vec (repeat capacity [])))})
+
+; 해시 테이블에 삽입
+(defn hash-insert [table key value]
+  "Insert key-value pair"
+  (let [idx (hash-function key (:capacity table))
+        buckets (:buckets table)]
+    (swap! buckets (fn [b]
+      (let [bucket (nth b idx)]
+        (if (empty? (filter (fn [p] (= (first p) key)) bucket))
+          (assoc b idx (conj bucket [key value]))
+          (assoc b idx (map (fn [p]
+                      (if (= (first p) key)
+                        [key value]
+                        p))
+                    bucket))))))
+    table))
+
+; 해시 테이블에서 조회
+(defn hash-get [table key]
+  "Get value by key"
+  (let [idx (hash-function key (:capacity table))
+        bucket (nth @(:buckets table) idx)
+        entry (first (filter (fn [p] (= (first p) key)) bucket))]
+    (if (nil? entry) nil (second entry))))
+
+; 해시 테이블에서 삭제
+(defn hash-delete [table key]
+  "Delete key-value pair"
+  (let [idx (hash-function key (:capacity table))
+        buckets (:buckets table)]
+    (swap! buckets (fn [b]
+      (assoc b idx (filter (fn [p] (not (= (first p) key))) (nth b idx)))))
+    table))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Open Addressing & Linear Probing
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 선형 탐사 기반 해시 테이블
+(defn create-open-hash-table [capacity]
+  "Create hash table with open addressing"
+  {:type :open-hash-table
+   :capacity capacity
+   :size (atom 0)
+   :table (atom (vec (repeat capacity nil)))
+   :deleted (atom #{})})
+
+; 선형 탐사로 삽입
+(defn open-insert [table key value]
+  "Insert with linear probing"
+  (let [hash-table (:table table)
+        capacity (:capacity table)
+        idx (atom (hash-function key capacity))]
+    (loop []
+      (let [slot (nth @hash-table @idx)]
+        (if (or (nil? slot) (contains? @(:deleted table) @idx))
+          (do
+            (swap! hash-table assoc @idx [key value])
+            (swap! (:deleted table) disj @idx)
+            table)
+          (do
+            (reset! idx (mod (inc @idx) capacity))
+            (recur)))))))
+
+; 선형 탐사로 조회
+(defn open-get [table key]
+  "Get with linear probing"
+  (let [hash-table @(:table table)
+        capacity (:capacity table)
+        idx (atom (hash-function key capacity))
+        visited (atom 0)]
+    (loop []
+      (if (>= @visited capacity)
+        nil
+        (let [slot (nth hash-table @idx)]
+          (if (nil? slot)
+            nil
+            (if (= (first slot) key)
+              (second slot)
+              (do
+                (reset! idx (mod (inc @idx) capacity))
+                (swap! visited inc)
+                (recur)))))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Load Factor & Rehashing
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 로드 팩터 계산
+(defn load-factor [table]
+  "Calculate load factor"
+  (/ @(:size table) (:capacity table)))
+
+; 로드 팩터 기준 리해싱 필요 확인
+(defn needs-rehash? [table &:key [threshold 0.75]]
+  "Check if rehashing is needed"
+  (>= (load-factor table) threshold))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Hash Table Inspection
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 해시 테이블 크기
+(defn hash-table-size [table]
+  "Get number of entries"
+  (reduce (fn [sum bucket]
+    (+ sum (count bucket)))
+    0
+    @(:buckets table)))
+
+; 해시 테이블 용량
+(defn hash-table-capacity [table]
+  "Get capacity"
+  (:capacity table))
+
+; 충돌 수 계산
+(defn collision-count [table]
+  "Count collisions"
+  (reduce (fn [sum bucket]
+    (+ sum (max 0 (dec (count bucket)))))
+    0
+    @(:buckets table)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Hash Table (Phase 163) loaded")

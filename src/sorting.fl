@@ -1,0 +1,94 @@
+; ============================================================================
+; FreeLang v9 — Phase 164: Sorting Algorithms
+; 비교 기반 정렬, 비교 불가 정렬
+; ============================================================================
+
+; 버블 정렬
+(defn bubble-sort [arr]
+  "Bubble sort"
+  (let [n (count arr)
+        arr (atom (vec arr))]
+    (doseq [i (range n)]
+      (doseq [j (range (- n i 1))]
+        (if (> (nth @arr j) (nth @arr (inc j)))
+          (swap! arr (fn [a]
+            (let [temp (nth a j)]
+              (assoc a j (nth a (inc j)) (inc j) temp)))))))
+    @arr))
+
+; 선택 정렬
+(defn selection-sort [arr]
+  "Selection sort"
+  (let [n (count arr)
+        arr (atom (vec arr))]
+    (doseq [i (range (dec n))]
+      (let [min-idx (atom i)]
+        (doseq [j (range (inc i) n)]
+          (if (< (nth @arr j) (nth @arr @min-idx))
+            (reset! min-idx j)))
+        (swap! arr (fn [a]
+          (let [temp (nth a i)]
+            (assoc a i (nth a @min-idx) @min-idx temp))))))
+    @arr))
+
+; 삽입 정렬
+(defn insertion-sort [arr]
+  "Insertion sort"
+  (let [n (count arr)
+        arr (atom (vec arr))]
+    (doseq [i (range 1 n)]
+      (let [key (nth @arr i)
+            j (atom (dec i))]
+        (loop []
+          (if (and (>= @j 0) (> (nth @arr @j) key))
+            (do
+              (swap! arr assoc (inc @j) (nth @arr @j))
+              (swap! j dec)
+              (recur))
+            (swap! arr assoc (inc @j) key)))))
+    @arr))
+
+; 퀵정렬
+(defn quicksort [arr]
+  "Quicksort"
+  (if (<= (count arr) 1)
+    arr
+    (let [pivot (nth arr (quot (count arr) 2))
+          left (filter (fn [x] (< x pivot)) arr)
+          middle (filter (fn [x] (= x pivot)) arr)
+          right (filter (fn [x] (> x pivot)) arr)]
+      (concat (quicksort left) middle (quicksort right)))))
+
+; 병합정렬
+(defn mergesort [arr]
+  "Merge sort"
+  (if (<= (count arr) 1)
+    arr
+    (let [mid (quot (count arr) 2)
+          left (mergesort (vec (take mid arr)))
+          right (mergesort (vec (drop mid arr)))]
+      (loop [l left r right result []]
+        (cond
+          (empty? l) (concat result r)
+          (empty? r) (concat result l)
+          (< (first l) (first r))
+          (recur (rest l) r (conj result (first l)))
+          :else
+          (recur l (rest r) (conj result (first r))))))))
+
+; 카운팅 정렬
+(defn counting-sort [arr &:key [max-val nil]]
+  "Counting sort"
+  (let [max-v (or max-val (reduce max arr))
+        min-v (reduce min arr)
+        range (+ (- max-v min-v) 1)
+        count (atom (vec (repeat range 0)))]
+    (doseq [x arr]
+      (swap! count assoc (- x min-v) (inc (nth @count (- x min-v)))))
+    (let [result (atom [])]
+      (doseq [i (range range)]
+        (doseq [_ (range (nth @count i))]
+          (swap! result conj (+ i min-v))))
+      @result)))
+
+(print "✓ Sorting Algorithms (Phase 164) loaded")

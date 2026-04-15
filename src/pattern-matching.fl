@@ -1,0 +1,45 @@
+; ============================================================================
+; FreeLang v9 — Phase 167: Regex & Pattern Matching
+; 문자열 매칭, 패턴 검색
+; ============================================================================
+
+; 와일드카드 매칭 (? = 한 글자, * = 여러 글자)
+(defn wildcard-match [text pattern]
+  "Wildcard matching with ? and *"
+  (let [t-len (count text)
+        p-len (count pattern)
+        dp (atom (vec (repeat (inc t-len) (vec (repeat (inc p-len) false)))))]
+    (swap! dp assoc 0 (assoc (nth @dp 0) 0 true))
+    ; *로 시작하는 패턴 처리
+    (doseq [j (range 1 (inc p-len))]
+      (if (= (nth (str pattern) (dec j)) '*')
+        (swap! dp assoc 0 (assoc (nth @dp 0) j (nth (nth @dp 0) (dec j))))))
+    ; DP 테이블 채우기
+    (doseq [i (range 1 (inc t-len))
+            j (range 1 (inc p-len))]
+      (let [t-char (nth (str text) (dec i))
+            p-char (nth (str pattern) (dec j))]
+        (cond
+          (= p-char '*')
+          (swap! dp assoc i (assoc (nth @dp i) j
+            (or (nth (nth @dp i) (dec j))
+                (nth (nth @dp (dec i)) j))))
+          (or (= p-char '?) (= p-char t-char))
+          (swap! dp assoc i (assoc (nth @dp i) j (nth (nth @dp (dec i)) (dec j))))
+          :else
+          (swap! dp assoc i (assoc (nth @dp i) j false)))))
+    (nth (nth @dp t-len) p-len)))
+
+; 패턴 존재 확인
+(defn pattern-exists [text pattern]
+  "Check if pattern exists in text"
+  (let [t-len (count text)
+        p-len (count pattern)]
+    (loop [i 0]
+      (if (> (+ i p-len) t-len)
+        false
+        (if (= (subs (str text) i (+ i p-len)) pattern)
+          true
+          (recur (inc i)))))))
+
+(print "✓ Pattern Matching (Phase 167) loaded")

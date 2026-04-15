@@ -1,0 +1,86 @@
+; ============================================================================
+; FreeLang v9 — Phase 165: Dynamic Programming
+; 메모이제이션, DP 테이블, 최대부분배열, LCS
+; ============================================================================
+
+; 피보나치 (메모이제이션)
+(defn fib-memo [n &:key [memo {}]]
+  "Fibonacci with memoization"
+  (if (contains? memo n)
+    (get memo n)
+    (if (<= n 1)
+      n
+      (let [result (+ (fib-memo (- n 1) :memo memo)
+                      (fib-memo (- n 2) :memo memo))]
+        (assoc memo n result)
+        result))))
+
+; 코인 변화 (최소 동전 수)
+(defn coin-change [coins amount]
+  "Minimum coins for amount"
+  (let [dp (atom (vec (repeat (inc amount) Integer/MAX_VALUE)))]
+    (swap! dp assoc 0 0)
+    (doseq [i (range 1 (inc amount))]
+      (doseq [coin coins]
+        (if (<= coin i)
+          (let [prev (nth @dp (- i coin))]
+            (if (not (= prev Integer/MAX_VALUE))
+              (swap! dp assoc i (min (nth @dp i) (inc prev))))))))
+    (let [result (nth @dp amount)]
+      (if (= result Integer/MAX_VALUE) -1 result))))
+
+; 배낭 문제 (0/1)
+(defn knapsack [weights values capacity]
+  "0/1 knapsack"
+  (let [n (count weights)
+        dp (atom (vec (repeat (inc capacity) 0)))]
+    (doseq [i (range n)]
+      (loop [w capacity]
+        (if (>= w 0)
+          (do
+            (if (>= w (nth weights i))
+              (swap! dp assoc w 
+                (max (nth @dp w)
+                     (+ (nth values i) (nth @dp (- w (nth weights i)))))))
+            (recur (dec w))))))
+    (nth @dp capacity)))
+
+; 최대 부분배열 (Kadane)
+(defn max-subarray [arr]
+  "Maximum subarray sum"
+  (let [max-cur (atom (first arr))
+        max-global (atom (first arr))]
+    (doseq [i (range 1 (count arr))]
+      (let [val (nth arr i)]
+        (reset! max-cur (max val (+ @max-cur val)))
+        (reset! max-global (max @max-global @max-cur))))
+    @max-global))
+
+; 최장 공통 부분수열
+(defn lcs [s1 s2]
+  "Longest common subsequence"
+  (let [m (count s1)
+        n (count s2)
+        dp (atom (vec (repeat (inc m) (vec (repeat (inc n) 0)))))]
+    (doseq [i (range 1 (inc m))
+            j (range 1 (inc n))]
+      (if (= (nth (str s1) (dec i)) (nth (str s2) (dec j)))
+        (swap! dp assoc i (assoc (nth @dp i) j (inc (nth (nth @dp (dec i)) (dec j)))))
+        (swap! dp assoc i (assoc (nth @dp i) j (max (nth (nth @dp (dec i)) j) 
+                                                     (nth (nth @dp i) (dec j)))))))
+    (nth (nth @dp m) n)))
+
+; 계단 오르기
+(defn climb-stairs [n]
+  "Number of ways to climb n stairs"
+  (if (<= n 2)
+    n
+    (let [dp (atom [1 2])]
+      (loop [i 3]
+        (if (<= i n)
+          (do
+            (swap! dp conj (+ (last @dp) (nth @dp (- (count @dp) 2))))
+            (recur (inc i)))
+          (last @dp))))))
+
+(print "✓ Dynamic Programming (Phase 165) loaded")

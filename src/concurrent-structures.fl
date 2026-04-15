@@ -1,0 +1,84 @@
+; ============================================================================
+; FreeLang v9 — Phase 170: Concurrent Data Structures
+; 스레드 안전 큐, 락, 동시 카운터
+; ============================================================================
+
+; 스레드 안전 큐
+(defn create-thread-safe-queue []
+  "Create thread-safe queue"
+  {:type :queue
+   :data (atom [])
+   :lock (atom false)})
+
+; 큐에 추가 (원자적)
+(defn enqueue [queue value]
+  "Add to queue atomically"
+  (loop []
+    (if (compare-and-set! (:lock queue) false true)
+      (do
+        (swap! (:data queue) conj value)
+        (swap! (:lock queue) not))
+      (recur)))
+  queue)
+
+; 큐에서 제거 (원자적)
+(defn dequeue [queue]
+  "Remove from queue atomically"
+  (loop []
+    (if (compare-and-set! (:lock queue) false true)
+      (let [data @(:data queue)
+            result (if (empty? data) nil (first data))]
+        (if (not (nil? result))
+          (swap! (:data queue) rest))
+        (swap! (:lock queue) not)
+        result)
+      (recur))))
+
+; 동시 카운터
+(defn create-concurrent-counter [initial]
+  "Create thread-safe counter"
+  {:type :counter
+   :value (atom initial)})
+
+; 카운터 증가
+(defn increment-counter [counter]
+  "Increment counter atomically"
+  (swap! (:value counter) inc)
+  counter)
+
+; 카운터 감소
+(defn decrement-counter [counter]
+  "Decrement counter atomically"
+  (swap! (:value counter) dec)
+  counter)
+
+; 카운터 값 조회
+(defn get-counter [counter]
+  "Get counter value"
+  @(:value counter))
+
+; 읽기-쓰기 락
+(defn create-rwlock []
+  "Create read-write lock"
+  {:type :rwlock
+   :readers (atom 0)
+   :writers (atom 0)
+   :write-lock (atom false)})
+
+; 읽기 시작
+(defn acquire-read-lock [lock]
+  "Acquire read lock"
+  (loop []
+    (if (> @(:writers lock) 0)
+      (recur)
+      (do
+        (swap! (:readers lock) inc)
+        lock))))
+
+; 읽기 종료
+(defn release-read-lock [lock]
+  "Release read lock"
+  (swap! (:readers lock) dec)
+  lock)
+
+(print "✓ Concurrent Data Structures (Phase 170) loaded")

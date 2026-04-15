@@ -1,0 +1,59 @@
+; ============================================================================
+; FreeLang v9 — Phase 166: Backtracking & N-Queens
+; 부분집합, 순열, N-Queens, 스도쿠
+; ============================================================================
+
+; 부분집합 생성
+(defn subsets [arr]
+  "Generate all subsets"
+  (if (empty? arr)
+    [[]]
+    (let [head (first arr)
+          tail-subsets (subsets (rest arr))]
+      (concat tail-subsets (map (fn [s] (conj s head)) tail-subsets)))))
+
+; 순열 생성
+(defn permutations [arr]
+  "Generate all permutations"
+  (if (<= (count arr) 1)
+    [arr]
+    (let [head (first arr)
+          tail (rest arr)]
+      (mapcat (fn [perm]
+        (map-indexed (fn [i x]
+          (vec (concat (take i perm) [head] (drop i perm))))
+        (conj perm nil)))
+        (permutations (vec tail))))))
+
+; N-Queens 솔루션
+(defn nqueens [n]
+  "Solve N-Queens problem"
+  (letfn [(is-safe [board row col]
+            (and
+              (not (some (fn [c] (= (nth (nth board row) c) 'Q)) (range col)))
+              (let [i (atom (dec row)) j (atom (dec col))]
+                (loop []
+                  (if (and (>= @i 0) (>= @j 0))
+                    (do
+                      (if (= (nth (nth board @i) @j) 'Q)
+                        (do
+                          (reset! i -1)
+                          false)
+                        (do
+                          (swap! i dec)
+                          (swap! j dec)
+                          (recur))))
+                    true)))))
+          (solve [board row solutions]
+            (if (= row n)
+              (conj solutions board)
+              (let [new-solutions (atom solutions)]
+                (doseq [col (range n)]
+                  (if (is-safe board row col)
+                    (let [new-board (assoc board row (assoc (nth board row) col 'Q))]
+                      (reset! new-solutions (solve new-board (inc row) @new-solutions)))))
+                @new-solutions)))]
+    (let [empty-board (vec (repeat n (vec (repeat n '.-))))]
+      (solve empty-board 0 []))))
+
+(print "✓ Backtracking (Phase 166) loaded")
