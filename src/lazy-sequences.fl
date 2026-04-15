@@ -1,0 +1,266 @@
+; ============================================================================
+; FreeLang v9 — Phase 158: Lazy Evaluation & Data Streaming
+; 지연 평가, 무한 시퀀스, 메모리 효율적 처리
+; ============================================================================
+
+(load "src/vectors.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Lazy Sequence Abstraction
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Lazy sequence 생성 (함수 기반)
+(defn create-lazy-seq [generator]
+  "Create lazy sequence from generator function"
+  {:type :lazy-seq
+   :generator generator
+   :cache (atom [])
+   :exhausted (atom false)
+   :index (atom 0)})
+
+; 다음 요소 가져오기 (캐싱)
+(defn lazy-next [seq]
+  "Get next element from lazy sequence"
+  (let [cache @(:cache seq)
+        idx @(:index seq)
+        gen (:generator seq)
+        exhausted @(:exhausted seq)]
+    (if (< idx (count cache))
+      (let [val (nth cache idx)]
+        (swap! (:index seq) inc)
+        {:value val :done false})
+      (if exhausted
+        {:done true}
+        (let [result (gen idx)]
+          (if (nil? result)
+            (do
+              (reset! (:exhausted seq) true)
+              {:done true})
+            (do
+              (swap! (:cache seq) conj result)
+              (swap! (:index seq) inc)
+              {:value result :done false})))))))
+
+; 현재 인덱스 리셋
+(defn lazy-reset [seq]
+  "Reset lazy sequence pointer"
+  (reset! (:index seq) 0)
+  seq)
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Infinite Sequences (무한 시퀀스)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 반복 시퀀스 (무한)
+(defn lazy-repeat [value]
+  "Create infinite sequence of repeated value"
+  (create-lazy-seq (fn [_] value)))
+
+; 범위 시퀀스
+(defn lazy-range [start &:key [end nil] [step 1]]
+  "Create lazy sequence of range"
+  (create-lazy-seq
+    (fn [idx]
+      (let [val (+ start (* idx step))]
+        (if (and end (>= val end))
+          nil
+          val)))))
+
+; 무한 범위
+(defn lazy-range-infinite [start &:key [step 1]]
+  "Create infinite range sequence"
+  (create-lazy-seq
+    (fn [idx]
+      (+ start (* idx step)))))
+
+; 사이클 시퀀스 (반복)
+(defn lazy-cycle [coll]
+  "Create infinite cycle of collection"
+  (create-lazy-seq
+    (fn [idx]
+      (nth coll (mod idx (count coll))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Lazy Transformations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Lazy map
+(defn lazy-map [f seq]
+  "Apply function lazily"
+  (create-lazy-seq
+    (fn [idx]
+      (lazy-reset seq)
+      (loop [i 0 result nil]
+        (if (= i idx)
+          result
+          (let [next-val (lazy-next seq)]
+            (if (:done next-val)
+              nil
+              (recur (inc i) (f (:value next-val)))))))))
+
+; Lazy filter
+(defn lazy-filter [pred seq]
+  "Filter lazy sequence"
+  (let [filtered (atom [])]
+    (create-lazy-seq
+      (fn [idx]
+        (lazy-reset seq)
+        (loop [i 0 found 0]
+          (let [next-val (lazy-next seq)]
+            (if (:done next-val)
+              nil
+              (if (pred (:value next-val))
+                (do
+                  (swap! filtered conj (:value next-val))
+                  (if (= found idx)
+                    (:value next-val)
+                    (recur (inc i) (inc found))))
+                (recur (inc i) found)))))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Lazy Sequence Operations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Take: 처음 n개 요소
+(defn lazy-take [n seq]
+  "Take first n elements"
+  (create-lazy-seq
+    (fn [idx]
+      (if (>= idx n)
+        nil
+        (let [next-val (lazy-next seq)]
+          (if (:done next-val) nil (:value next-val)))))))
+
+; Drop: 처음 n개 제외
+(defn lazy-drop [n seq]
+  "Drop first n elements"
+  (create-lazy-seq
+    (fn [idx]
+      (lazy-reset seq)
+      (loop [i 0]
+        (if (< i n)
+          (do (lazy-next seq) (recur (inc i)))
+          (let [next-val (lazy-next seq)]
+            (if (:done next-val) nil (:value next-val))))))))
+
+; Take-while: 조건 만족할 때까지
+(defn lazy-take-while [pred seq]
+  "Take while predicate is true"
+  (create-lazy-seq
+    (fn [idx]
+      (lazy-reset seq)
+      (loop [i 0]
+        (let [next-val (lazy-next seq)]
+          (if (:done next-val)
+            nil
+            (if (pred (:value next-val))
+              (if (= i idx)
+                (:value next-val)
+                (recur (inc i)))
+              nil)))))))
+
+; Drop-while: 조건 만족할 때까지 제외
+(defn lazy-drop-while [pred seq]
+  "Drop while predicate is true"
+  (create-lazy-seq
+    (fn [idx]
+      (lazy-reset seq)
+      (loop [dropped false i 0]
+        (let [next-val (lazy-next seq)]
+          (if (:done next-val)
+            nil
+            (if dropped
+              (if (= i idx)
+                (:value next-val)
+                (recur dropped (inc i)))
+              (if (pred (:value next-val))
+                (recur false i)
+                (if (= i idx)
+                  (:value next-val)
+                  (recur true (inc i)))))))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Materialization (구체화)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Lazy 시퀀스를 리스트로 변환
+(defn lazy-to-list [seq &:key [limit 10000]]
+  "Materialize lazy sequence to list"
+  (let [result (atom [])]
+    (lazy-reset seq)
+    (loop []
+      (if (>= (count @result) limit)
+        @result
+        (let [next-val (lazy-next seq)]
+          (if (:done next-val)
+            @result
+            (do
+              (swap! result conj (:value next-val))
+              (recur))))))))
+
+; Lazy 시퀀스에서 n개 요소 추출
+(defn lazy-realize [seq n]
+  "Realize first n elements"
+  (let [result (atom [])]
+    (lazy-reset seq)
+    (loop [i 0]
+      (if (>= i n)
+        @result
+        (let [next-val (lazy-next seq)]
+          (if (:done next-val)
+            @result
+            (do
+              (swap! result conj (:value next-val))
+              (recur (inc i)))))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Lazy Sequence Composition
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Lazy sequence 결합
+(defn lazy-concat [seqs]
+  "Concatenate lazy sequences"
+  (let [seq-idx (atom 0)
+        elem-idx (atom 0)]
+    (create-lazy-seq
+      (fn [idx]
+        (loop []
+          (if (>= @seq-idx (count seqs))
+            nil
+            (let [current-seq (nth seqs @seq-idx)
+                  next-val (lazy-next current-seq)]
+              (if (:done next-val)
+                (do
+                  (swap! seq-idx inc)
+                  (reset! elem-idx 0)
+                  (recur))
+                (:value next-val)))))))))
+
+; Lazy zip: 여러 시퀀스 병렬 처리
+(defn lazy-zip [seqs]
+  "Zip lazy sequences"
+  (create-lazy-seq
+    (fn [idx]
+      (let [results (map (fn [seq]
+                          (let [next-val (lazy-next seq)]
+                            (if (:done next-val) nil (:value next-val))))
+                        seqs)]
+        (if (some nil? results) nil results)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 7. Lazy Debugging & Inspection
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Lazy sequence 정보 조회
+(defn lazy-info [seq]
+  "Get lazy sequence information"
+  {:type :lazy-seq
+   :cached-count (count @(:cache seq))
+   :current-index @(:index seq)
+   :exhausted @(:exhausted seq)})
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Lazy Sequences (Phase 158) loaded")

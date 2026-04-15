@@ -1,0 +1,279 @@
+; ============================================================================
+; FreeLang v9 — Phase 158: Iterator Protocol
+; 이터레이터 인터페이스, 커스텀 이터레이터, 상태 관리
+; ============================================================================
+
+(load "src/streams.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Iterator Protocol
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Iterator 인터페이스
+(defn create-iterator [has-next-fn next-fn reset-fn]
+  "Create iterator with protocol methods"
+  {:type :iterator
+   :has-next has-next-fn
+   :next next-fn
+   :reset reset-fn
+   :state (atom {})})
+
+; has-next: 다음 요소 존재 여부
+(defn iterator-has-next [iter]
+  "Check if iterator has next element"
+  ((:has-next iter)))
+
+; next: 다음 요소 가져오기
+(defn iterator-next [iter]
+  "Get next element from iterator"
+  ((:next iter)))
+
+; reset: 이터레이터 초기화
+(defn iterator-reset [iter]
+  "Reset iterator to beginning"
+  ((:reset iter))
+  iter)
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Collection Iterators
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 배열 이터레이터
+(defn array-iterator [coll]
+  "Create iterator for array/list"
+  (let [index (atom 0)]
+    (create-iterator
+      (fn [] (< @index (count coll)))
+      (fn [] (if (< @index (count coll))
+             (let [val (nth coll @index)]
+               (swap! index inc)
+               val)
+             nil))
+      (fn [] (reset! index 0)))))
+
+; Map/Dictionary 이터레이터
+(defn map-iterator [m]
+  "Create iterator for map entries"
+  (let [keys (keys m)
+        index (atom 0)]
+    (create-iterator
+      (fn [] (< @index (count keys)))
+      (fn [] (if (< @index (count keys))
+             (let [k (nth keys @index)
+                   entry {:key k :value (get m k)}]
+               (swap! index inc)
+               entry)
+             nil))
+      (fn [] (reset! index 0)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Filtered & Mapped Iterators
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 필터링 이터레이터
+(defn filtered-iterator [iter pred]
+  "Create filtered iterator"
+  (let [state (atom {:last-valid nil})
+        base-iter iter]
+    (create-iterator
+      (fn []
+        (loop []
+          (if (iterator-has-next base-iter)
+            (let [val (iterator-next base-iter)]
+              (if (pred val)
+                (do (swap! state assoc :last-valid val) true)
+                (recur)))
+            false)))
+      (fn [] (get @state :last-valid))
+      (fn [] (iterator-reset base-iter)))))
+
+; 매핑 이터레이터
+(defn mapped-iterator [iter f]
+  "Create mapped iterator"
+  (create-iterator
+    (fn [] (iterator-has-next iter))
+    (fn [] (if (iterator-has-next iter)
+           (f (iterator-next iter))
+           nil))
+    (fn [] (iterator-reset iter))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Stateful Iterators
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 상태 유지 이터레이터
+(defn stateful-iterator [initial-state transition-fn]
+  "Create stateful iterator"
+  (let [state (atom initial-state)
+        done (atom false)]
+    (create-iterator
+      (fn [] (not @done))
+      (fn []
+        (let [current @state
+              {:keys [value next-state finished]} (transition-fn current)]
+          (if finished
+            (reset! done true)
+            (reset! state next-state))
+          value))
+      (fn []
+        (reset! state initial-state)
+        (reset! done false)))))
+
+; Fibonacci 이터레이터 예제
+(defn fibonacci-iterator [max-terms]
+  "Create fibonacci iterator"
+  (let [state (atom {:a 0 :b 1 :count 0})
+        max-val max-terms]
+    (create-iterator
+      (fn [] (< (:count @state) max-val))
+      (fn []
+        (let [a (:a @state)
+              b (:b @state)]
+          (swap! state (fn [s]
+            {:a b :b (+ a b) :count (inc (:count s))}))
+          a))
+      (fn [] (reset! state {:a 0 :b 1 :count 0})))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Iterator Composition
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 이터레이터 결합
+(defn concat-iterators [iterators]
+  "Concatenate iterators"
+  (let [iter-list iterators
+        index (atom 0)
+        current-iter (atom (if (> (count iter-list) 0)
+                            (nth iter-list 0)
+                            nil))]
+    (create-iterator
+      (fn []
+        (loop []
+          (if (nil? @current-iter)
+            false
+            (if (iterator-has-next @current-iter)
+              true
+              (do
+                (swap! index inc)
+                (if (< @index (count iter-list))
+                  (do
+                    (reset! current-iter (nth iter-list @index))
+                    (recur))
+                  false))))))
+      (fn []
+        (if (nil? @current-iter)
+          nil
+          (iterator-next @current-iter)))
+      (fn []
+        (reset! index 0)
+        (reset! current-iter (if (> (count iter-list) 0)
+                             (nth iter-list 0)
+                             nil))
+        (doseq [it iter-list]
+          (iterator-reset it))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Iterator Consumption Patterns
+; ─────────────────────────────────────────────────────────────────────────────
+
+; For-each: 이터레이터 순회
+(defn for-each [iter f]
+  "Iterate with side effects"
+  (iterator-reset iter)
+  (loop []
+    (if (iterator-has-next iter)
+      (do
+        (f (iterator-next iter))
+        (recur)))))
+
+; Reduce with iterator
+(defn iterator-reduce [iter initial-value reducer]
+  "Reduce iterator"
+  (iterator-reset iter)
+  (loop [acc initial-value]
+    (if (iterator-has-next iter)
+      (recur (reducer acc (iterator-next iter)))
+      acc)))
+
+; To-list: 이터레이터를 리스트로 변환
+(defn iterator-to-list [iter &:key [limit 10000]]
+  "Materialize iterator to list"
+  (iterator-reset iter)
+  (loop [result [] count 0]
+    (if (or (>= count limit) (not (iterator-has-next iter)))
+      result
+      (recur (conj result (iterator-next iter)) (inc count)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 7. Advanced Iterator Patterns
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Peek-able iterator
+(defn peekable-iterator [iter]
+  "Create peekable iterator (lookahead)"
+  (let [peeked (atom nil)
+        has-peeked (atom false)]
+    (create-iterator
+      (fn []
+        (if @has-peeked
+          true
+          (iterator-has-next iter)))
+      (fn []
+        (if @has-peeked
+          (let [val @peeked]
+            (reset! has-peeked false)
+            val)
+          (iterator-next iter)))
+      (fn [] (iterator-reset iter)))))
+
+; Buffered iterator (배치 처리용)
+(defn buffered-iterator [iter buffer-size]
+  "Create buffered iterator"
+  (let [buffer (atom [])
+        index (atom 0)]
+    (create-iterator
+      (fn []
+        (if (>= @index (count @buffer))
+          (reset! buffer (vec (take buffer-size (iterator-to-list iter))))
+          true)
+        (> (count @buffer) 0))
+      (fn []
+        (if (>= @index (count @buffer))
+          (do
+            (reset! buffer (vec (take buffer-size (iterator-to-list iter))))
+            (reset! index 0)))
+        (if (< @index (count @buffer))
+          (let [val (nth @buffer @index)]
+            (swap! index inc)
+            val)
+          nil))
+      (fn []
+        (reset! buffer [])
+        (reset! index 0)))))
+
+; Zipped iterator
+(defn zip-iterators [iters]
+  "Zip multiple iterators"
+  (let [iter-list iters]
+    (create-iterator
+      (fn [] (every? iterator-has-next iter-list))
+      (fn [] (mapv iterator-next iter-list))
+      (fn [] (doseq [iter iter-list]
+             (iterator-reset iter))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 8. Iterator Utilities
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Iterator 정보
+(defn iterator-info [iter]
+  "Get iterator metadata"
+  {:type :iterator
+   :protocol :standard
+   :state (:state iter)})
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Iterator Protocol (Phase 158) loaded")

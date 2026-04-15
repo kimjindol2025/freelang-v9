@@ -1,0 +1,306 @@
+; ============================================================================
+; FreeLang v9 — Phase 158: Stream Processing
+; 스트림 파이프라인, 축약, 배치 처리
+; ============================================================================
+
+(load "src/lazy-sequences.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Stream Abstraction
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Stream 생성 (lazy sequence 기반)
+(defn create-stream [source]
+  "Create stream from source"
+  {:type :stream
+   :source source
+   :transforms (atom [])
+   :consumed (atom false)})
+
+; Transform 추가
+(defn stream-map [stream f]
+  "Add map transform to stream"
+  (swap! (:transforms stream) conj {:op :map :fn f})
+  stream)
+
+; Filter 추가
+(defn stream-filter [stream pred]
+  "Add filter transform to stream"
+  (swap! (:transforms stream) conj {:op :filter :fn pred})
+  stream)
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Stream Reduction Operations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Reduce: 스트림 축약
+(defn stream-reduce [stream initial-value reducer]
+  "Reduce stream to single value"
+  (let [seq (:source stream)
+        transforms @(:transforms stream)
+        accumulator (atom initial-value)]
+
+    (lazy-reset seq)
+    (loop []
+      (let [next-val (lazy-next seq)]
+        (if (:done next-val)
+          @accumulator
+          (let [val (:value next-val)
+                transformed (loop [v val trans transforms]
+                  (if (empty? trans)
+                    v
+                    (let [t (first trans)]
+                      (case (:op t)
+                        :map (recur ((:fn t) v) (rest trans))
+                        :filter (if ((:fn t) v)
+                                 (recur v (rest trans))
+                                 (reduced nil))
+                        (recur v (rest trans))))))]
+            (if (nil? transformed)
+              (recur)
+              (do
+                (reset! accumulator (reducer @accumulator transformed))
+                (recur)))))))
+    @accumulator))
+
+; Fold: Reduce와 유사하지만 즉시 평가
+(defn stream-fold [stream initial-value f]
+  "Fold stream left-associatively"
+  (stream-reduce stream initial-value f))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Stream Aggregation
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Count: 스트림 요소 개수
+(defn stream-count [stream]
+  "Count elements in stream"
+  (stream-reduce stream 0 (fn [acc _] (inc acc))))
+
+; Sum: 스트림 합계
+(defn stream-sum [stream]
+  "Sum stream elements"
+  (stream-reduce stream 0 (fn [acc x] (+ acc x))))
+
+; Average: 평균값
+(defn stream-average [stream]
+  "Calculate stream average"
+  (let [count (stream-count stream)
+        sum (stream-sum stream)]
+    (if (> count 0)
+      (/ sum count)
+      0)))
+
+; Min/Max: 최소/최대값
+(defn stream-min [stream]
+  "Find minimum in stream"
+  (stream-reduce stream Double/POSITIVE_INFINITY min))
+
+(defn stream-max [stream]
+  "Find maximum in stream"
+  (stream-reduce stream Double/NEGATIVE_INFINITY max))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Stream Collection Operations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Collect: 스트림을 컬렉션으로 변환
+(defn stream-collect [stream]
+  "Collect stream to list"
+  (let [result (atom [])]
+    (let [seq (:source stream)
+          transforms @(:transforms stream)]
+      (lazy-reset seq)
+      (loop []
+        (let [next-val (lazy-next seq)]
+          (if (:done next-val)
+            @result
+            (let [val (:value next-val)
+                  transformed (loop [v val trans transforms]
+                    (if (empty? trans)
+                      v
+                      (let [t (first trans)]
+                        (case (:op t)
+                          :map (recur ((:fn t) v) (rest trans))
+                          :filter (if ((:fn t) v)
+                                   (recur v (rest trans))
+                                   (reduced nil))
+                          (recur v (rest trans))))))]
+              (if (nil? transformed)
+                (recur)
+                (do
+                  (swap! result conj transformed)
+                  (recur)))))))))
+    @result))
+
+; First: 첫 번째 요소
+(defn stream-first [stream]
+  "Get first element"
+  (let [seq (:source stream)]
+    (lazy-reset seq)
+    (let [next-val (lazy-next seq)]
+      (if (:done next-val) nil (:value next-val)))))
+
+; Any: 조건 만족하는 요소 존재?
+(defn stream-any [stream pred]
+  "Check if any element satisfies predicate"
+  (let [seq (:source stream)]
+    (lazy-reset seq)
+    (loop []
+      (let [next-val (lazy-next seq)]
+        (if (:done next-val)
+          false
+          (if (pred (:value next-val))
+            true
+            (recur)))))))
+
+; All: 모든 요소 조건 만족?
+(defn stream-all [stream pred]
+  "Check if all elements satisfy predicate"
+  (let [seq (:source stream)]
+    (lazy-reset seq)
+    (loop []
+      (let [next-val (lazy-next seq)]
+        (if (:done next-val)
+          true
+          (if (pred (:value next-val))
+            (recur)
+            false))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Stream Partitioning
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Batch: 배치 단위로 묶음
+(defn stream-batch [stream batch-size]
+  "Partition stream into batches"
+  (let [seq (:source stream)
+        batches (atom [])]
+    (lazy-reset seq)
+    (loop [batch (atom [])]
+      (if (>= (count @batch) batch-size)
+        (do
+          (swap! batches conj @batch)
+          (recur (atom [])))
+        (let [next-val (lazy-next seq)]
+          (if (:done next-val)
+            (do
+              (if (> (count @batch) 0)
+                (swap! batches conj @batch))
+              @batches)
+            (do
+              (swap! batch conj (:value next-val))
+              (recur batch))))))))
+
+; Window: 슬라이딩 윈도우
+(defn stream-window [stream window-size step]
+  "Create sliding window over stream"
+  (let [seq (:source stream)
+        window (atom (vec (take window-size (lazy-realize seq window-size))))
+        windows (atom [])]
+    (lazy-reset seq)
+    (loop [i window-size]
+      (if (>= i (+ 100000 (count @window))) ; 충분한 요소 처리 후 중단
+        @windows
+        (let [next-val (lazy-next seq)]
+          (if (:done next-val)
+            (if (> (count @window) 0)
+              (swap! windows conj @window)
+              @windows)
+            (do
+              (reset! window (vec (concat (drop step @window) [(:value next-val)])))
+              (swap! windows conj @window)
+              (recur (inc i)))))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Stream Composition & Chaining
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Scan: 누적값 계산 (reduce와 달리 중간값도 포함)
+(defn stream-scan [stream initial-value f]
+  "Scan stream with accumulation"
+  (let [seq (:source stream)
+        result (atom [])
+        acc (atom initial-value)]
+    (lazy-reset seq)
+    (loop []
+      (let [next-val (lazy-next seq)]
+        (if (:done next-val)
+          @result
+          (do
+            (reset! acc (f @acc (:value next-val)))
+            (swap! result conj @acc)
+            (recur)))))))
+
+; Distinct: 중복 제거
+(defn stream-distinct [stream]
+  "Remove duplicates from stream"
+  (let [seen (atom #{})
+        result (atom [])]
+    (let [seq (:source stream)]
+      (lazy-reset seq)
+      (loop []
+        (let [next-val (lazy-next seq)]
+          (if (:done next-val)
+            @result
+            (let [val (:value next-val)]
+              (if (contains? @seen val)
+                (recur)
+                (do
+                  (swap! seen conj val)
+                  (swap! result conj val)
+                  (recur)))))))))
+
+; Flat-map: map + flatten
+(defn stream-flat-map [stream f]
+  "Flat map stream elements"
+  (let [result (atom [])]
+    (let [seq (:source stream)]
+      (lazy-reset seq)
+      (loop []
+        (let [next-val (lazy-next seq)]
+          (if (:done next-val)
+            @result
+            (do
+              (let [mapped (f (:value next-val))]
+                (if (sequential? mapped)
+                  (swap! result (fn [r] (vec (concat r mapped))))
+                  (swap! result conj mapped)))
+              (recur))))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 7. Stream Statistics
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Summary statistics
+(defn stream-stats [stream]
+  "Compute stream statistics"
+  (let [seq (:source stream)
+        values (atom [])
+        sum (atom 0)
+        count (atom 0)
+        min (atom Double/POSITIVE_INFINITY)
+        max (atom Double/NEGATIVE_INFINITY)]
+    (lazy-reset seq)
+    (loop []
+      (let [next-val (lazy-next seq)]
+        (if (:done next-val)
+          {:count @count
+           :sum @sum
+           :avg (if (> @count 0) (/ @sum @count) 0)
+           :min @min
+           :max @max
+           :values @values}
+          (let [val (:value next-val)]
+            (swap! values conj val)
+            (swap! sum (fn [s] (+ s val)))
+            (swap! count inc)
+            (reset! min (min @min val))
+            (reset! max (max @max val))
+            (recur)))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Stream Processing (Phase 158) loaded")
