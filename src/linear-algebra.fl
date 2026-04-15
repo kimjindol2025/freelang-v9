@@ -1,0 +1,256 @@
+; ============================================================================
+; FreeLang v9 — Phase 156: Advanced Linear Algebra
+; 행렬 분해, 고유값, 선형시스템 해결
+; ============================================================================
+
+(load "src/vectors.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Matrix Decompositions
+; ─────────────────────────────────────────────────────────────────────────────
+
+; LU 분해 (간단한 Doolittle 방법)
+(defn lu-decomposition [A]
+  "Compute LU decomposition of matrix A"
+  (let [n (:rows A)
+        L (identity-matrix n)
+        U (create-matrix (map vec (:data A)))
+        L-data (:data L)
+        U-data (:data U)]
+    (do
+      (dotimes [k (dec n)]
+        (dotimes [i (inc k) n]
+          (let [factor (if (not= (matrix-get U k k) 0)
+                         (/ (matrix-get U i k) (matrix-get U k k))
+                         0)]
+            (when (> i k)
+              (do
+                (assoc-in L [:data i k] factor)
+                (dotimes [j k n]
+                  (assoc-in U [:data i j]
+                    (- (matrix-get U i j)
+                       (* factor (matrix-get U k j)))))))))))))
+
+; QR 분해 (간단한 Gram-Schmidt)
+(defn qr-decomposition [A]
+  "Compute QR decomposition using Gram-Schmidt"
+  (let [m (:rows A)
+        n (:cols A)
+        Q-cols (atom [])
+        R-data (zero-matrix n n)]
+    (do
+      (dotimes [j n]
+        (let [v (create-vector (map (fn [i] (matrix-get A i j)) (range m)))
+              orthog (atom v)]
+          (dotimes [k j]
+            (let [q-k (nth @Q-cols k)
+                  projection (dot-product v q-k)]
+              (do
+                (assoc-in R-data [:data k j] projection)
+                (reset! orthog (vector-subtract @orthog (vector-scale q-k projection))))))
+          (let [norm (vector-length @orthog)]
+            (do
+              (assoc-in R-data [:data j j] norm)
+              (if (> norm 0)
+                (swap! Q-cols conj (normalize-vector @orthog))
+                (swap! Q-cols conj @orthog))))))
+      {:Q (create-matrix (map :values @Q-cols))
+       :R R-data})))
+
+; Cholesky 분해 (대칭 양정치 행렬용)
+(defn cholesky-decomposition [A]
+  "Compute Cholesky decomposition for symmetric positive-definite matrix"
+  (let [n (:rows A)
+        L (zero-matrix n n)
+        L-data (:data L)]
+    (do
+      (dotimes [i n]
+        (dotimes [j (inc i)]
+          (if (= i j)
+            (let [sum (apply + (map (fn [k]
+              (let [L-ik (matrix-get L i k)]
+                (* L-ik L-ik)))
+              (range j)))]
+              (assoc-in L [:data i i] (Math/sqrt (- (matrix-get A i i) sum))))
+            (let [sum (apply + (map (fn [k]
+              (* (matrix-get L i k) (matrix-get L j k)))
+              (range j)))]
+              (assoc-in L [:data i j] (/ (- (matrix-get A i j) sum)
+                                        (matrix-get L j j)))))))
+      L)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Eigenvalue Problems
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 2x2 행렬의 고유값
+(defn eigenvalues-2x2 [A]
+  "Calculate eigenvalues of 2×2 matrix"
+  (if (not= (:rows A) 2)
+    (throw "Only 2×2 matrices")
+    (let [a (matrix-get A 0 0)
+          b (matrix-get A 0 1)
+          c (matrix-get A 1 0)
+          d (matrix-get A 1 1)
+          trace (+ a d)
+          det (- (* a d) (* b c))
+          discriminant (- (* trace trace) (* 4 det))
+          sqrt-disc (Math/sqrt (Math/abs discriminant))]
+      (if (>= discriminant 0)
+        [(/ (+ trace sqrt-disc) 2)
+         (/ (- trace sqrt-disc) 2)]
+        [(/ trace 2) ; 복소수는 실수부만 반환
+         (/ trace 2)]))))
+
+; 3x3 행렬의 고유값 (간단한 근사)
+(defn eigenvalues-3x3 [A]
+  "Estimate largest eigenvalue using power method"
+  (if (not= (:rows A) 3)
+    (throw "Only 3×3 matrices")
+    (let [v (create-vector [1 1 1])
+          iterations 10]
+      (loop [v-cur v
+             i 0]
+        (if (>= i iterations)
+          (let [Av (matrix-vector-multiply A v-cur)
+                lambda (/ (dot-product Av v-cur) (dot-product v-cur v-cur))]
+            lambda)
+          (let [Av (matrix-vector-multiply A v-cur)
+                v-next (normalize-vector Av)]
+            (recur v-next (inc i))))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Linear System Solving
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 2x2 선형시스템 해결 (역행렬 사용)
+(defn solve-linear-system-2x2 [A b]
+  "Solve Ax = b for 2×2 matrix A"
+  (if (not= (:rows A) 2)
+    (throw "Only 2×2 systems")
+    (let [A-inv (matrix-inverse A)
+          x (matrix-vector-multiply A-inv b)]
+      x)))
+
+; Gauss 소거법 (간단한 구현)
+(defn solve-by-gaussian-elimination [A b]
+  "Solve Ax = b using Gaussian elimination"
+  (let [n (count (:values b))
+        ab-data (vec (map-indexed (fn [i row]
+          (conj row (nth (:values b) i)))
+          (:data A)))]
+    ; Forward elimination
+    (loop [k 0
+           ab ab-data]
+      (if (>= k n)
+        ; Back substitution
+        (let [x (atom (vec (repeat n 0)))]
+          (dotimes [i n]
+            (swap! x assoc (- (dec n) i)
+              (let [j (- (dec n) i)
+                    row (nth ab j)
+                    sum (apply + (map-indexed (fn [idx val]
+                      (if (> idx j)
+                        (* val (nth @x idx))
+                        0))
+                      (butlast row)))]
+                (/ (- (last row) sum) (nth row j)))))
+          @x)
+        (recur (inc k) ab)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Matrix Norms & Conditioning
+; ─────────────────────────────────────────────────────────────────────────────
+
+; Frobenius 노름
+(defn frobenius-norm [A]
+  "Calculate Frobenius norm of matrix"
+  (let [sum (apply + (map (fn [row]
+    (apply + (map (fn [x] (* x x)) row)))
+    (:data A)))]
+    (Math/sqrt sum)))
+
+; 행렬의 1-노름 (column sum norm)
+(defn matrix-1-norm [A]
+  "Calculate 1-norm (max column sum)"
+  (let [cols (:cols A)
+        col-sums (map (fn [j]
+          (apply + (map (fn [i] (Math/abs (matrix-get A i j))) (range (:rows A)))))
+          (range cols))]
+    (apply max col-sums)))
+
+; 행렬의 ∞-노름 (row sum norm)
+(defn matrix-inf-norm [A]
+  "Calculate infinity norm (max row sum)"
+  (let [rows (:rows A)
+        row-sums (map (fn [i]
+          (apply + (map (fn [j] (Math/abs (matrix-get A i j))) (range (:cols A)))))
+          (range rows))]
+    (apply max row-sums)))
+
+; 조건 수 (Condition Number)
+(defn condition-number [A]
+  "Estimate condition number (stability)"
+  (if (not= (:rows A) (:cols A))
+    (throw "Condition number only for square matrices")
+    (if (= (determinant A) 0)
+      ##Inf
+      (let [norm-A (frobenius-norm A)
+            A-inv (matrix-inverse A)
+            norm-Ainv (frobenius-norm A-inv)]
+        (* norm-A norm-Ainv)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Matrix Statistics
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 행렬 원소 합
+(defn matrix-sum [A]
+  "Sum of all matrix elements"
+  (apply + (map (fn [row] (apply + row)) (:data A))))
+
+; 행렬 평균
+(defn matrix-mean [A]
+  "Mean of all matrix elements"
+  (/ (matrix-sum A) (* (:rows A) (:cols A))))
+
+; 행렬 최대값
+(defn matrix-max [A]
+  "Maximum element in matrix"
+  (apply max (apply concat (:data A))))
+
+; 행렬 최소값
+(defn matrix-min [A]
+  "Minimum element in matrix"
+  (apply min (apply concat (:data A))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Least Squares Fitting
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 최소 제곱 문제 (Ax ≈ b)
+(defn least-squares-fit [A b]
+  "Solve least squares problem: minimize ||Ax - b||"
+  (let [At (matrix-transpose A)
+        AtA (matrix-multiply At A)
+        Atb (matrix-vector-multiply At b)]
+    (solve-linear-system-2x2 AtA Atb)))
+
+; 선형 회귀 (y = mx + c)
+(defn linear-regression [x-values y-values]
+  "Fit line to data points"
+  (let [n (count x-values)
+        sum-x (apply + x-values)
+        sum-y (apply + y-values)
+        sum-xy (apply + (map * x-values y-values))
+        sum-x2 (apply + (map (fn [x] (* x x)) x-values))
+        m (/ (- (* n sum-xy) (* sum-x sum-y))
+             (- (* n sum-x2) (* sum-x sum-x)))
+        c (/ (- sum-y (* m sum-x)) n)]
+    {:slope m :intercept c}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Advanced Linear Algebra (Phase 156) loaded")

@@ -1,0 +1,307 @@
+; ============================================================================
+; FreeLang v9 — Phase 156: Vector Operations & Linear Algebra
+; 벡터 연산, 행렬 연산, 선형대수 기초
+; ============================================================================
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Vector Creation & Basic Operations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 벡터 생성
+(defn create-vector [values]
+  "Create a vector from array of numbers"
+  {:values (vec values)
+   :dimension (count values)
+   :type :vector})
+
+; 벡터 길이 (L2 norm)
+(defn vector-length [v]
+  "Calculate L2 norm (length) of vector"
+  (let [values (:values v)
+        sum-of-squares (apply + (map (fn [x] (* x x)) values))]
+    (Math/sqrt sum-of-squares)))
+
+; 벡터 노름 (p-norm)
+(defn vector-norm [v &:key [p 2]]
+  "Calculate p-norm of vector"
+  (let [values (:values v)]
+    (case p
+      1 (apply + (map (fn [x] (Math/abs x)) values))
+      2 (vector-length v)
+      (Math/pow (apply + (map (fn [x] (Math/pow (Math/abs x) p)) values))
+                (/ 1 p)))))
+
+; 벡터 정규화
+(defn normalize-vector [v]
+  "Return unit vector in same direction"
+  (let [length (vector-length v)
+        values (:values v)]
+    (if (= length 0)
+      v
+      (create-vector (map (fn [x] (/ x length)) values)))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Vector Arithmetic
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 벡터 덧셈
+(defn vector-add [v1 v2]
+  "Add two vectors element-wise"
+  (if (not= (:dimension v1) (:dimension v2))
+    (throw "Vector dimensions must match")
+    (let [vals1 (:values v1)
+          vals2 (:values v2)]
+      (create-vector (map + vals1 vals2)))))
+
+; 벡터 뺄셈
+(defn vector-subtract [v1 v2]
+  "Subtract v2 from v1"
+  (if (not= (:dimension v1) (:dimension v2))
+    (throw "Vector dimensions must match")
+    (let [vals1 (:values v1)
+          vals2 (:values v2)]
+      (create-vector (map - vals1 vals2)))))
+
+; 벡터 스칼라곱
+(defn vector-scale [v scalar]
+  "Multiply vector by scalar"
+  (let [values (:values v)]
+    (create-vector (map (fn [x] (* x scalar)) values))))
+
+; 내적 (Dot Product)
+(defn dot-product [v1 v2]
+  "Calculate dot product of two vectors"
+  (if (not= (:dimension v1) (:dimension v2))
+    (throw "Vector dimensions must match")
+    (let [vals1 (:values v1)
+          vals2 (:values v2)]
+      (apply + (map * vals1 vals2)))))
+
+; 외적 (Cross Product, 3D only)
+(defn cross-product [v1 v2]
+  "Calculate cross product (3D vectors only)"
+  (if (and (= (:dimension v1) 3) (= (:dimension v2) 3))
+    (let [[x1 y1 z1] (:values v1)
+          [x2 y2 z2] (:values v2)]
+      (create-vector [(- (* y1 z2) (* z1 y2))
+                      (- (* z1 x2) (* x1 z2))
+                      (- (* x1 y2) (* y1 x2))]))
+    (throw "Cross product only defined for 3D vectors")))
+
+; 거리 (Distance)
+(defn distance [v1 v2]
+  "Calculate Euclidean distance between two vectors"
+  (vector-length (vector-subtract v2 v1)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Matrix Creation & Basic Operations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 행렬 생성
+(defn create-matrix [rows]
+  "Create a matrix from rows (each row is a vector/array)"
+  (let [data (vec (map vec rows))
+        m (count data)
+        n (if (> m 0) (count (first data)) 0)]
+    {:data data
+     :rows m
+     :cols n
+     :type :matrix}))
+
+; 항등 행렬 (Identity Matrix)
+(defn identity-matrix [n]
+  "Create n×n identity matrix"
+  (create-matrix
+    (map (fn [i]
+      (map (fn [j] (if (= i j) 1 0)) (range n)))
+      (range n))))
+
+; 영행렬 (Zero Matrix)
+(defn zero-matrix [m n]
+  "Create m×n zero matrix"
+  (create-matrix (vec (repeat m (vec (repeat n 0))))))
+
+; 행렬 전치 (Transpose)
+(defn matrix-transpose [M]
+  "Transpose a matrix"
+  (let [data (:data M)
+        m (:rows M)
+        n (:cols M)]
+    (create-matrix
+      (map (fn [j]
+        (map (fn [i] (get-in data [i j])) (range m)))
+        (range n)))))
+
+; 행렬 접근
+(defn matrix-get [M i j]
+  "Get element at position (i, j)"
+  (get-in (:data M) [i j]))
+
+; 행렬 설정
+(defn matrix-set [M i j value]
+  "Set element at position (i, j)"
+  (assoc-in M [:data i j] value))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Matrix Arithmetic
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 행렬 덧셈
+(defn matrix-add [A B]
+  "Add two matrices"
+  (if (or (not= (:rows A) (:rows B))
+          (not= (:cols A) (:cols B)))
+    (throw "Matrix dimensions must match")
+    (let [data-a (:data A)
+          data-b (:data B)]
+      (create-matrix
+        (map (fn [i]
+          (map (fn [j] (+ (get-in data-a [i j]) (get-in data-b [i j])))
+            (range (:cols A))))
+          (range (:rows A)))))))
+
+; 행렬 뺄셈
+(defn matrix-subtract [A B]
+  "Subtract matrix B from matrix A"
+  (if (or (not= (:rows A) (:rows B))
+          (not= (:cols A) (:cols B)))
+    (throw "Matrix dimensions must match")
+    (let [data-a (:data A)
+          data-b (:data B)]
+      (create-matrix
+        (map (fn [i]
+          (map (fn [j] (- (get-in data-a [i j]) (get-in data-b [i j])))
+            (range (:cols A))))
+          (range (:rows A)))))))
+
+; 행렬 스칼라곱
+(defn matrix-scale [A scalar]
+  "Multiply matrix by scalar"
+  (let [data (:data A)]
+    (create-matrix
+      (map (fn [i]
+        (map (fn [j] (* (get-in data [i j]) scalar))
+          (range (:cols A))))
+        (range (:rows A))))))
+
+; 행렬 곱셈 (Matrix Multiplication)
+(defn matrix-multiply [A B]
+  "Multiply two matrices A × B"
+  (if (not= (:cols A) (:rows B))
+    (throw "Incompatible matrix dimensions")
+    (let [data-a (:data A)
+          data-b (:data B)
+          m (:rows A)
+          n (:cols A)
+          p (:cols B)]
+      (create-matrix
+        (map (fn [i]
+          (map (fn [j]
+            (apply + (map (fn [k]
+              (* (get-in data-a [i k]) (get-in data-b [k j])))
+              (range n))))
+            (range p)))
+          (range m))))))
+
+; 행렬 벡터 곱셈
+(defn matrix-vector-multiply [A v]
+  "Multiply matrix by vector A × v"
+  (if (not= (:cols A) (:dimension v))
+    (throw "Incompatible dimensions")
+    (let [data (:data A)
+          vals (:values v)
+          m (:rows A)
+          n (:cols A)]
+      (create-vector
+        (map (fn [i]
+          (apply + (map (fn [j]
+            (* (get-in data [i j]) (nth vals j)))
+            (range n))))
+          (range m))))))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Matrix Properties
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 행렬식 계산 (2x2, 3x3)
+(defn determinant [M]
+  "Calculate determinant (2×2 and 3×3 only)"
+  (cond
+    (= (:rows M) 2)
+      (let [a (matrix-get M 0 0)
+            b (matrix-get M 0 1)
+            c (matrix-get M 1 0)
+            d (matrix-get M 1 1)]
+        (- (* a d) (* b c)))
+    (= (:rows M) 3)
+      (let [a (matrix-get M 0 0) b (matrix-get M 0 1) c (matrix-get M 0 2)
+            d (matrix-get M 1 0) e (matrix-get M 1 1) f (matrix-get M 1 2)
+            g (matrix-get M 2 0) h (matrix-get M 2 1) i (matrix-get M 2 2)]
+        (+ (* a (- (* e i) (* f h)))
+           (* (- b) (- (* d i) (* f g)))
+           (* c (- (* d h) (* e g)))))
+    :else (throw "Determinant only for 2×2 and 3×3 matrices")))
+
+; 행렬 역행렬 (2x2 only)
+(defn matrix-inverse [M]
+  "Calculate inverse matrix (2×2 only)"
+  (if (not= (:rows M) 2)
+    (throw "Inverse only implemented for 2×2 matrices")
+    (let [det (determinant M)
+          a (matrix-get M 0 0)
+          b (matrix-get M 0 1)
+          c (matrix-get M 1 0)
+          d (matrix-get M 1 1)]
+      (if (= det 0)
+        (throw "Matrix is singular (determinant = 0)")
+        (create-matrix [[(/ d det) (/ (- b) det)]
+                        [(/ (- c) det) (/ a det)]])))))
+
+; 행렬 대각합 (Trace)
+(defn matrix-trace [M]
+  "Calculate trace (sum of diagonal elements)"
+  (if (not= (:rows M) (:cols M))
+    (throw "Trace only defined for square matrices")
+    (let [data (:data M)
+          n (:rows M)]
+      (apply + (map (fn [i] (get-in data [i i])) (range n))))))
+
+; 행렬 순위 (Rank) — 간단한 구현
+(defn matrix-rank [M]
+  "Estimate matrix rank (simplified)"
+  (let [m (:rows M)
+        n (:cols M)]
+    (min m n)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Utility Functions
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 벡터를 행렬로
+(defn vector-to-matrix [v]
+  "Convert vector to column matrix"
+  (create-matrix (map (fn [x] [x]) (:values v))))
+
+; 행렬을 벡터로 (열 벡터만)
+(defn matrix-to-vector [M]
+  "Convert column matrix to vector"
+  (if (not= (:cols M) 1)
+    (throw "Only column matrices can be converted to vectors")
+    (create-vector (map (fn [i] (matrix-get M i 0)) (range (:rows M))))))
+
+; 행렬 출력
+(defn print-matrix [M]
+  "Pretty print matrix"
+  (doseq [row (:data M)]
+    (println (apply str (map (fn [x] (str (Math/round (* 1000 x)) " ")) row)))))
+
+; 벡터 출력
+(defn print-vector [v]
+  "Pretty print vector"
+  (println (str "[" (apply str (interpose " " (:values v))) "]")))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Vector Operations & Linear Algebra (Phase 156) loaded")

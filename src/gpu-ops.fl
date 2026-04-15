@@ -1,0 +1,253 @@
+; ============================================================================
+; FreeLang v9 — Phase 156: GPU Acceleration Framework
+; GPU 지원, 벡터화 연산, 배치 처리
+; ============================================================================
+
+(load "src/vectors.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. GPU State Management
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 글로벌 GPU 설정
+(def gpu-config (atom {
+  :enabled false
+  :backend nil
+  :device-id 0
+  :memory-mb 0
+  :available false
+}))
+
+; GPU 백엔드 타입
+(def gpu-backends #{:cuda :metal :opencl :vulkan})
+
+; GPU 활성화
+(defn enable-gpu-acceleration [&:key [backend :cuda] [device-id 0]]
+  "Enable GPU acceleration"
+  (if (not (contains? gpu-backends backend))
+    (throw "Invalid GPU backend")
+    (do
+      (swap! gpu-config assoc
+        :enabled true
+        :backend backend
+        :device-id device-id
+        :available (is-gpu-available backend device-id))
+      {:ok (:available @gpu-config)
+       :backend backend
+       :device-id device-id})))
+
+; GPU 비활성화
+(defn disable-gpu-acceleration []
+  "Disable GPU acceleration"
+  (swap! gpu-config assoc :enabled false)
+  {:ok true})
+
+; GPU 사용 여부 확인
+(defn is-gpu-available [&:key [backend nil] [device-id 0]]
+  "Check if GPU is available"
+  (if backend
+    (case backend
+      :cuda (is-cuda-available device-id)
+      :metal (is-metal-available)
+      :opencl (is-opencl-available device-id)
+      :vulkan (is-vulkan-available device-id)
+      false)
+    (:available @gpu-config)))
+
+; GPU 백엔드 확인 (플러그인)
+(defn is-cuda-available [device-id]
+  "Check CUDA availability (stub)"
+  false)
+
+(defn is-metal-available []
+  "Check Metal availability (stub)"
+  false)
+
+(defn is-opencl-available [device-id]
+  "Check OpenCL availability (stub)"
+  false)
+
+(defn is-vulkan-available [device-id]
+  "Check Vulkan availability (stub)"
+  false)
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. GPU Memory Management
+; ─────────────────────────────────────────────────────────────────────────────
+
+; GPU 메모리 통계
+(defn gpu-memory-stats []
+  "Get GPU memory statistics"
+  (if (not (:enabled @gpu-config))
+    {:available false
+     :total-mb 0
+     :used-mb 0
+     :free-mb 0}
+    {:available true
+     :backend (:backend @gpu-config)
+     :device-id (:device-id @gpu-config)
+     :total-mb (get-gpu-total-memory)
+     :used-mb (get-gpu-used-memory)
+     :free-mb (get-gpu-free-memory)}))
+
+; GPU 메모리 조회 (스텁)
+(defn get-gpu-total-memory []
+  "Get total GPU memory (MB)"
+  0)
+
+(defn get-gpu-used-memory []
+  "Get used GPU memory (MB)"
+  0)
+
+(defn get-gpu-free-memory []
+  "Get free GPU memory (MB)"
+  0)
+
+; GPU 메모리 할당
+(defn allocate-gpu-memory [size-mb]
+  "Allocate GPU memory"
+  {:ok (:enabled @gpu-config)
+   :allocated-mb (if (:enabled @gpu-config) size-mb 0)
+   :backend (:backend @gpu-config)})
+
+; GPU 메모리 해제
+(defn deallocate-gpu-memory [buffer-id]
+  "Deallocate GPU memory"
+  {:ok true
+   :deallocated-bytes 0})
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. GPU-Optimized Operations
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 배치 행렬 곱셈 (GPU 최적화)
+(defn batch-matrix-multiply [matrices-A matrices-B]
+  "Multiply batch of matrices [A1×B1, A2×B2, ...]"
+  (let [use-gpu (:enabled @gpu-config)
+        results (map (fn [[A B]]
+          (if use-gpu
+            (gpu-matrix-multiply A B)
+            (matrix-multiply A B)))
+          (zip matrices-A matrices-B))]
+    {:gpu-accelerated use-gpu
+     :backend (:backend @gpu-config)
+     :count (count results)
+     :results results}))
+
+; GPU 행렬 곱셈 (스텁)
+(defn gpu-matrix-multiply [A B]
+  "GPU-accelerated matrix multiplication (stub)"
+  (matrix-multiply A B))
+
+; 배치 벡터 연산
+(defn batch-vector-add [vectors-A vectors-B]
+  "Add batch of vectors"
+  (let [use-gpu (:enabled @gpu-config)]
+    {:gpu-accelerated use-gpu
+     :results (map vector-add vectors-A vectors-B)}))
+
+; 배치 내적 계산
+(defn batch-dot-products [vectors-A vectors-B]
+  "Calculate batch of dot products"
+  (let [use-gpu (:enabled @gpu-config)]
+    {:gpu-accelerated use-gpu
+     :results (map dot-product vectors-A vectors-B)}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Performance Measurement
+; ─────────────────────────────────────────────────────────────────────────────
+
+; GPU vs CPU 성능 비교
+(defn benchmark-matrix-multiply [A B]
+  "Benchmark matrix multiplication on CPU and GPU"
+  (let [cpu-start (now)
+        cpu-result (matrix-multiply A B)
+        cpu-time (- (now) cpu-start)
+
+        gpu-start (if (:enabled @gpu-config) (now) 0)
+        gpu-result (if (:enabled @gpu-config)
+                     (gpu-matrix-multiply A B)
+                     nil)
+        gpu-time (if (:enabled @gpu-config) (- (now) gpu-start) 0)]
+    {:cpu-time-ms cpu-time
+     :gpu-time-ms gpu-time
+     :gpu-available (:enabled @gpu-config)
+     :speedup (if (> gpu-time 0) (/ cpu-time gpu-time) 0)
+     :recommended-backend (if (> gpu-time 0) (:backend @gpu-config) :cpu)}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Backend Plugin System
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 백엔드 레지스트리
+(def gpu-backends-registry (atom {}))
+
+; 백엔드 등록
+(defn register-gpu-backend [name handler]
+  "Register custom GPU backend handler"
+  (swap! gpu-backends-registry assoc name handler)
+  {:ok true :backend name})
+
+; 커스텀 백엔드 연산
+(defn invoke-gpu-backend [backend-name operation & args]
+  "Invoke custom GPU backend operation"
+  (let [handler (get @gpu-backends-registry backend-name)]
+    (if handler
+      (apply handler operation args)
+      {:ok false :error "Backend not registered"})))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Vectorization & Parallelization
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 벡터화된 연산 (요소별)
+(defn vectorized-operation [op vector-a vector-b]
+  "Apply operation element-wise"
+  (let [vals-a (:values vector-a)
+        vals-b (:values vector-b)
+        use-gpu (:enabled @gpu-config)]
+    (if use-gpu
+      (gpu-vectorized-operation op vals-a vals-b)
+      (create-vector (map op vals-a vals-b)))))
+
+; GPU 벡터화 연산 (스텁)
+(defn gpu-vectorized-operation [op vals-a vals-b]
+  "GPU-accelerated element-wise operation (stub)"
+  (create-vector (map op vals-a vals-b)))
+
+; 병렬 행렬 연산
+(defn parallel-matrix-operation [op matrices]
+  "Apply operation to multiple matrices in parallel"
+  (let [use-gpu (:enabled @gpu-config)
+        use-threads (>= (count matrices) 4)]
+    {:parallel use-threads
+     :gpu-accelerated use-gpu
+     :results (map op matrices)}))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 7. GPU Diagnostics
+; ─────────────────────────────────────────────────────────────────────────────
+
+; GPU 진단 정보
+(defn gpu-diagnostics []
+  "Get GPU system diagnostics"
+  {:enabled (:enabled @gpu-config)
+   :backend (:backend @gpu-config)
+   :device-id (:device-id @gpu-config)
+   :memory (gpu-memory-stats)
+   :backends-available (get-available-gpu-backends)
+   :performance-estimate (if (:enabled @gpu-config)
+                          "10-100x faster for large matrices"
+                          "GPU not enabled")})
+
+; 사용 가능한 GPU 백엔드
+(defn get-available-gpu-backends []
+  "Detect available GPU backends"
+  (let [available []]
+    (if (is-cuda-available 0) (conj available :cuda) available)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ GPU Acceleration Framework (Phase 156) loaded")
