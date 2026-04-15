@@ -1,0 +1,210 @@
+; ============================================================================
+; FreeLang v9 — Phase 152: Protocol Buffers Parser
+; .proto 파일 파싱 및 메시지/서비스 정의 추출
+; ============================================================================
+
+(def PROTO_TYPES #{:double :float :int32 :int64 :uint32 :uint64
+                    :sint32 :sint64 :fixed32 :fixed64 :sfixed32 :sfixed64
+                    :bool :string :bytes})
+
+(def FIELD_TYPES {:required 0 :optional 1 :repeated 2})
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. Tokenizer — .proto 파일을 토큰으로 분할
+; ─────────────────────────────────────────────────────────────────────────────
+
+(defn tokenize [proto-content]
+  (let [content (str-trim proto-content)
+        tokens []]
+    ; 간단한 토크나이저: 문자, 숫자, 특수문자로 분할
+    (defn tokenize-recur [remaining-str current-token tokens]
+      (if (empty? remaining-str)
+        (if (empty? current-token) tokens (conj tokens current-token))
+        (let [ch (subs remaining-str 0 1)
+              rest-str (subs remaining-str 1)]
+          (cond
+            ; 공백 처리
+            (or (= ch " ") (= ch "\n") (= ch "\t") (= ch "\r"))
+            (tokenize-recur rest-str ""
+              (if (empty? current-token) tokens (conj tokens current-token)))
+
+            ; 특수문자 처리
+            (contains? #{"{" "}" ";" "," "=" "[" "]" "(" ")"} ch)
+            (let [new-tokens (if (empty? current-token) tokens (conj tokens current-token))]
+              (tokenize-recur rest-str "" (conj new-tokens ch)))
+
+            ; 주석 처리
+            (= ch "/")
+            (if (and (< 0 (count rest-str)) (= (subs rest-str 0 1) "/"))
+              ; 줄 주석
+              (let [eol (or (str-index-of rest-str "\n") (count rest-str))]
+                (tokenize-recur (subs rest-str eol) "" tokens))
+              ; 슬래시는 일반 문자
+              (tokenize-recur rest-str (str current-token ch) tokens))
+
+            ; 문자/숫자
+            :else
+            (tokenize-recur rest-str (str current-token ch) tokens)))))
+
+    (tokenize-recur content "" tokens)))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. Message Parser — message 정의 파싱
+; ─────────────────────────────────────────────────────────────────────────────
+
+(defn parse-field [tokens start-idx]
+  "필드 정의 파싱: [modifier] type name = number [options]"
+  (let [token (nth tokens start-idx nil)]
+    (if (nil? token) [nil (inc start-idx)]
+      (let [modifier (if (contains? FIELD_TYPES (keyword token))
+                       (keyword token)
+                       :optional)
+            idx (if (contains? FIELD_TYPES (keyword token))
+                  (inc start-idx)
+                  start-idx)
+            field-type (keyword (nth tokens idx nil))
+            field-name (nth tokens (inc idx) nil)
+            _ (nth tokens (+ idx 2) nil) ; "="
+            field-number (parse-long (nth tokens (+ idx 3) nil))]
+
+        [{:modifier modifier
+          :type field-type
+          :name field-name
+          :number field-number}
+         (+ idx 5)]))))
+
+(defn parse-message [tokens start-idx]
+  "message Name { fields... }"
+  (let [msg-name (nth tokens (inc start-idx) nil)
+        open-brace-idx (+ start-idx 2)
+        _ (assert (= "{" (nth tokens open-brace-idx)) "Expected {")]
+
+    (defn collect-fields [idx fields]
+      (let [token (nth tokens idx nil)]
+        (cond
+          (nil? token) [fields idx]
+          (= token "}") [fields (inc idx)]
+          (= token ";") (collect-fields (inc idx) fields)
+          :else
+          (let [[field next-idx] (parse-field tokens idx)]
+            (if field
+              (collect-fields next-idx (conj fields field))
+              [fields idx])))))
+
+    (let [[fields final-idx] (collect-fields (inc open-brace-idx) [])]
+      [{:type :message
+        :name msg-name
+        :fields fields}
+       final-idx])))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Service Parser — service 정의 파싱
+; ─────────────────────────────────────────────────────────────────────────────
+
+(defn parse-rpc-method [tokens start-idx]
+  "rpc MethodName(InputType) returns (OutputType);"
+  (let [method-name (nth tokens (inc start-idx) nil)
+        input-type (nth tokens (+ start-idx 3) nil) ; after "("
+        output-type (nth tokens (+ start-idx 7) nil)] ; after "returns ("
+
+    [{:type :method
+      :name method-name
+      :input input-type
+      :output output-type}
+     (+ start-idx 10)])) ; skip to after ";"
+
+(defn parse-service [tokens start-idx]
+  "service ServiceName { rpc methods... }"
+  (let [service-name (nth tokens (inc start-idx) nil)
+        open-brace-idx (+ start-idx 2)]
+
+    (defn collect-methods [idx methods]
+      (let [token (nth tokens idx nil)]
+        (cond
+          (nil? token) [methods idx]
+          (= token "}") [methods (inc idx)]
+          (= token "rpc")
+          (let [[method next-idx] (parse-rpc-method tokens idx)]
+            (collect-methods next-idx (conj methods method)))
+          (= token ";") (collect-methods (inc idx) methods)
+          :else (collect-methods (inc idx) methods))))
+
+    (let [[methods final-idx] (collect-methods (inc open-brace-idx) [])]
+      [{:type :service
+        :name service-name
+        :methods methods}
+       final-idx])))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Main Parser
+; ─────────────────────────────────────────────────────────────────────────────
+
+(defn parse-proto [proto-content]
+  "Parse .proto file content → {messages: [...], services: [...]}"
+  (let [tokens (tokenize proto-content)]
+    (defn parse-all [idx messages services]
+      (let [token (nth tokens idx nil)]
+        (cond
+          (nil? token) {:messages messages :services services}
+          (= token "syntax")
+          ; syntax "proto3"; 스킵
+          (let [semicolon-idx (+ idx 3)]
+            (parse-all (inc semicolon-idx) messages services))
+          (= token "message")
+          (let [[msg next-idx] (parse-message tokens idx)]
+            (parse-all next-idx (conj messages msg) services))
+          (= token "service")
+          (let [[svc next-idx] (parse-service tokens idx)]
+            (parse-all next-idx messages (conj services svc)))
+          (= token ";")
+          (parse-all (inc idx) messages services)
+          :else
+          (parse-all (inc idx) messages services))))
+
+    (parse-all 0 [] [])))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Utility Functions
+; ─────────────────────────────────────────────────────────────────────────────
+
+(defn get-message [schema message-name]
+  "Find message definition by name"
+  (first (filter (fn [msg]
+    (= (:name msg) message-name))
+    (:messages schema))))
+
+(defn get-service [schema service-name]
+  "Find service definition by name"
+  (first (filter (fn [svc]
+    (= (:name svc) service-name))
+    (:services schema))))
+
+(defn get-method [service method-name]
+  "Find RPC method in service"
+  (first (filter (fn [method]
+    (= (:name method) method-name))
+    (:methods service))))
+
+; Protobuf 숫자 인코딩 (간단한 버전)
+(defn encode-varint [n]
+  "Encode integer as varint"
+  (if (<= n 127)
+    [n]
+    (let [bytes [(bit-and n 0x7F 0x80)]]
+      (recur (bit-shift-right n 7)))))
+
+(defn decode-varint [bytes]
+  "Decode varint from bytes"
+  (let [result (atom 0)
+        shift (atom 0)]
+    (doseq [byte bytes]
+      (when (<= @shift 28)
+        (swap! result + (bit-shift-left (bit-and byte 0x7F) @shift))
+        (swap! shift + 7)))
+    @result))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ Protocol Buffers Parser (Phase 152) loaded")

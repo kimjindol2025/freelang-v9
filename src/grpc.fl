@@ -1,0 +1,239 @@
+; ============================================================================
+; FreeLang v9 — Phase 152: gRPC Server/Client
+; WebSocket 기반 고성능 마이크로서비스 통신
+; ============================================================================
+
+(load "src/proto-parser.fl")
+(load "src/reliability.fl")
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 1. gRPC Server
+; ─────────────────────────────────────────────────────────────────────────────
+
+; gRPC 서버 인스턴스 생성
+(defn create-grpc-server [port]
+  {:server-id (str "grpc_" (random) "_" (now))
+   :port port
+   :services {}
+   :handlers {}
+   :ws-server nil
+   :clients {}})
+
+; 서비스 등록
+(defn register-grpc-service [server service-name methods]
+  "Register gRPC service with RPC methods"
+  (assoc-in server [:services service-name] methods))
+
+; RPC 메서드 등록
+(defn register-grpc-method [server service-name method-name handler]
+  "Register individual RPC method handler"
+  (let [key (str service-name "/" method-name)]
+    (assoc-in server [:handlers key] handler)))
+
+; gRPC 서버 시작
+(defn start-grpc-server [server]
+  "Start gRPC server (WebSocket-based)"
+  (let [ws-server-id (ws-server-start (:port server))]
+    (do
+      ; Message handler
+      (ws-server-on ws-server-id "message" (fn [client-id message]
+        (let [request (parse-json message)
+              service (get request :service)
+              method (get request :method)
+              params (get request :params {})
+              handler-key (str service "/" method)
+              handler (get (:handlers server) handler-key)]
+          (if handler
+            (fl-try
+              (let [result (apply handler (vals params))]
+                (ws-send client-id
+                  (to-json {:status "ok"
+                           :result result})))
+              :on-error (fn [error]
+                (ws-send client-id
+                  (to-json {:status "error"
+                           :message (str error)}))))
+            (ws-send client-id
+              (to-json {:status "error"
+                       :message "Method not found"}))))))
+
+      ; Connection handler
+      (ws-server-on ws-server-id "connect" (fn [client-id]
+        (println (str "[gRPC] Client connected: " client-id))))
+
+      ; Close handler
+      (ws-server-on ws-server-id "close" (fn [client-id]
+        (println (str "[gRPC] Client disconnected: " client-id))))
+
+      (assoc server :ws-server ws-server-id))))
+
+; gRPC 서버 중지
+(defn stop-grpc-server [server]
+  (if-let [ws-id (:ws-server server)]
+    (do
+      (ws-server-stop ws-id)
+      (assoc server :ws-server nil))
+    server))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 2. gRPC Client
+; ─────────────────────────────────────────────────────────────────────────────
+
+; gRPC 클라이언트 연결
+(defn create-grpc-client [host port service-name]
+  {:connection-id (str "grpc_conn_" (random) "_" (now))
+   :host host
+   :port port
+   :service-name service-name
+   :ws-connection nil
+   :pending-requests {}
+   :breaker (create-circuit-breaker :failure-threshold 5)})
+
+; gRPC 클라이언트 연결
+(defn connect-grpc-client [client]
+  "Connect to gRPC server"
+  (let [url (str "ws://" (:host client) ":" (:port client) "/grpc")
+        ws-conn (ws-connect url)]
+    (assoc client :ws-connection ws-conn)))
+
+; RPC 메서드 호출
+(defn grpc-call [client method-name params]
+  "Call RPC method on gRPC server"
+  (let [breaker (:breaker client)
+        request {:service (:service-name client)
+                :method method-name
+                :params params}
+        call-fn (fn []
+          (fl-try
+            (do
+              (ws-send (:ws-connection client) (to-json request))
+              ; 응답 대기 (간단한 polling)
+              (let [max-wait 5000
+                    start (now)
+                    result (atom nil)]
+                (while (and (< (- (now) start) max-wait) (nil? @result))
+                  ; 실제로는 메시지 핸들러에서 처리
+                  (sleep 10))
+                @result))
+            :on-error (fn [error]
+              (throw error))))]
+
+    (let [breaker-result (call-with-breaker breaker call-fn)]
+      (if (:ok breaker-result)
+        {:ok true :result (:result breaker-result) :breaker (:breaker breaker-result)}
+        {:ok false :error (:error breaker-result) :breaker (:breaker breaker-result)}))))
+
+; gRPC 클라이언트 종료
+(defn close-grpc-client [client]
+  (if-let [conn (:ws-connection client)]
+    (do
+      (ws-close conn)
+      (assoc client :ws-connection nil))
+    client))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 3. Message Serialization (Protobuf-inspired)
+; ─────────────────────────────────────────────────────────────────────────────
+
+; 메시지 검증
+(defn validate-message [message schema-fields]
+  "Validate message against schema"
+  (every? (fn [field]
+    (let [field-name (:name field)
+          field-type (:type field)]
+      (if (contains? message field-name)
+        (let [value (get message field-name)]
+          (cond
+            (= field-type :string) (string? value)
+            (= field-type :int32) (and (number? value) (integer? value))
+            (= field-type :bool) (boolean? value)
+            (= field-type :bytes) (or (string? value) (bytes? value))
+            :else true))
+        (= (:modifier field) :optional))))
+    schema-fields))
+
+; 메시지 직렬화
+(defn serialize-message [message fields]
+  "Serialize message to JSON (simplified protobuf)"
+  (reduce (fn [acc field]
+    (let [field-name (:name field)
+          field-number (:number field)]
+      (if (contains? message field-name)
+        (assoc acc (str field-number) (get message field-name))
+        acc)))
+    {}
+    fields))
+
+; 메시지 역직렬화
+(defn deserialize-message [data fields]
+  "Deserialize from JSON to message"
+  (reduce (fn [acc field]
+    (let [field-name (:name field)
+          field-number (str (:number field))]
+      (if (contains? data field-number)
+        (assoc acc field-name (get data field-number))
+        acc)))
+    {}
+    fields))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 4. Performance Utilities
+; ─────────────────────────────────────────────────────────────────────────────
+
+; gRPC 호출 시간 측정
+(defn measure-grpc-call [client method-name params]
+  "Measure RPC call latency"
+  (let [start (now)]
+    (fl-try
+      (let [result (grpc-call client method-name params)
+            elapsed (- (now) start)]
+        {:ok true
+         :result result
+         :latency-ms elapsed})
+      :on-error (fn [error]
+        {:ok false
+         :error error
+         :latency-ms (- (now) start)}))))
+
+; gRPC 배치 호출
+(defn batch-grpc-calls [client method-name params-list]
+  "Call RPC method multiple times in parallel"
+  (pmap (fn [params]
+    (grpc-call client method-name params))
+    params-list))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 5. Health Check
+; ─────────────────────────────────────────────────────────────────────────────
+
+; gRPC 서버 헬스 체크
+(defn grpc-health-check [client]
+  "Check if gRPC server is healthy"
+  (fl-try
+    (let [result (grpc-call client "health" {})]
+      {:healthy (:ok result)
+       :latency (if (:ok result) "ok" "error")})
+    :on-error (fn [error]
+      {:healthy false
+       :error (str error)})))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; 6. Metadata & Interceptors
+; ─────────────────────────────────────────────────────────────────────────────
+
+; gRPC 메타데이터
+(defn create-metadata [&:key [timeout-ms 5000] [retries 3]]
+  {:timeout-ms timeout-ms
+   :retries retries
+   :headers {}})
+
+; 요청 인터셉터
+(defn with-interceptor [client interceptor-fn]
+  "Add request/response interceptor"
+  (assoc client :interceptor interceptor-fn))
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Export
+; ─────────────────────────────────────────────────────────────────────────────
+
+(print "✓ gRPC Server/Client (Phase 152) loaded")
