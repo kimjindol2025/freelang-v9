@@ -40,6 +40,7 @@ import { createWsModule } from "./stdlib-ws";              // Phase 21: WebSocke
 import { createWscModule } from "./stdlib-wsc";            // Phase 21: WebSocket 클라이언트
 import { createWorkerModule } from "./stdlib-worker";       // Phase 1 Step 1: Worker Threads (멀티스레드)
 import { createMutexModule } from "./stdlib-mutex";         // Phase 1 Step 3: Mutex & Semaphore (동기화)
+import { createWaitModule } from "./stdlib-wait";           // Phase 1 Step 4: WAIT-ALL (병렬 완료 대기)
 
 // Minimal Interpreter interface (순환 import 방지)
 interface InterpreterLike {
@@ -107,6 +108,9 @@ export function loadAllStdlib(interp: InterpreterLike): void {
     (n: string, a: any[]) => interp.callUserFunction(n, a)
   ));
   interp.registerModule(createMutexModule(         // Phase 1 Step 3: mutex-create, mutex-lock, semaphore-*, rwmutex-*
+    (n: string, a: any[]) => interp.callUserFunction(n, a)
+  ));
+  interp.registerModule(createWaitModule(          // Phase 1 Step 4: wait-all, wait-race, wait-any, wait-*-timeout
     (n: string, a: any[]) => interp.callUserFunction(n, a)
   ));
 }
