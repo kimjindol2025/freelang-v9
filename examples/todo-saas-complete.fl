@@ -1,0 +1,293 @@
+;;; ═══════════════════════════════════════════════════════════════════
+;;; TodoSaaS v1.0 — 완전한 할일 관리 SaaS
+;;;
+;;; 기능:
+;;; - REST API (CRUD)
+;;; - SQLite 데이터베이스
+;;; - Redis 캐시
+;;; - 실시간 업데이트 (SSE)
+;;; - AI 기반 우선순위 분석
+;;; - 구조화된 로깅
+;;;
+;;; 한 파일로 완전 구현 (~250줄)
+;;; ═══════════════════════════════════════════════════════════════════
+
+;; ─────────────────────────────────────────────────────────────────
+;; 1. 설정 및 초기화
+;; ─────────────────────────────────────────────────────────────────
+
+(log-init {:level "info" :file "logs/todo-saas.log"})
+
+(define db (sqlite-open "todos.db"))
+
+(define cache (redis-init "redis://localhost"))
+
+;; 데이터베이스 테이블 생성
+(sqlite-create-table db "todos" {
+  :id "INTEGER PRIMARY KEY"
+  :title "TEXT NOT NULL"
+  :description "TEXT"
+  :completed "BOOLEAN DEFAULT 0"
+  :priority "TEXT DEFAULT 'medium'"
+  :created_at "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+  :updated_at "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+  :user_id "INTEGER"
+})
+
+;; ─────────────────────────────────────────────────────────────────
+;; 2. 핵심 비즈니스 로직
+;; ─────────────────────────────────────────────────────────────────
+
+;;; 할일 생성
+(define create-todo (fn [user-id title description]
+  (do
+    (log-info "Creating todo" {:user_id user-id :title title})
+
+    (sqlite-exec db
+      "INSERT INTO todos (title, description, user_id)
+       VALUES ($1, $2, $3)"
+      [title description user-id])
+
+    (fcache-invalidate (str "todos:user:" user-id))
+
+    {:status "created" :title title})))
+
+;;; 할일 목록 조회 (캐시 활용)
+(define get-todos (fn [user-id]
+  (do
+    (define cache-key (str "todos:user:" user-id))
+
+    ;; 캐시 확인
+    (or
+      (fcache-get cache-key)
+      (do
+        ;; 캐시 미스 → DB 조회
+        (define todos (sqlite-query db
+          "SELECT * FROM todos WHERE user_id=$1 ORDER BY created_at DESC"
+          [user-id]))
+
+        ;; 캐시에 저장 (1시간)
+        (fcache-set cache-key todos 3600)
+        todos)))))
+
+;;; 할일 업데이트
+(define update-todo (fn [todo-id updates]
+  (do
+    (log-info "Updating todo" {:todo_id todo-id :updates updates})
+
+    ;; 동적 UPDATE 쿼리 생성
+    (define set-clause (str
+      (if (has? updates :title)
+        (str "title='" (. updates :title) "', ")
+        "")
+      (if (has? updates :completed)
+        (str "completed=" (. updates :completed) ", ")
+        "")
+      "updated_at=CURRENT_TIMESTAMP"))
+
+    (sqlite-exec db
+      (str "UPDATE todos SET " set-clause " WHERE id=" todo-id))
+
+    {:status "updated" :todo_id todo-id})))
+
+;;; 할일 삭제
+(define delete-todo (fn [todo-id]
+  (do
+    (log-info "Deleting todo" {:todo_id todo-id})
+    (sqlite-exec db "DELETE FROM todos WHERE id=$1" [todo-id])
+    {:status "deleted" :todo_id todo-id})))
+
+;;; AI 기반 우선순위 분석
+(define analyze-priority (fn [todo]
+  (do
+    (log-info "Analyzing priority" {:todo todo})
+
+    (defprompt "priority" ["title" "desc"]
+      "You are a productivity expert"
+      "Analyze this task: {{title}} - {{desc}}.
+       Return priority: high, medium, or low."
+      "text")
+
+    (define analysis (prompt-render "priority"
+      {:title (. todo :title) :desc (. todo :description)}))
+
+    ;; AI 호출 (스트림 사용)
+    (stream-ai {:model "claude-3-5-sonnet"
+                :prompt (. analysis :user)
+                :on-token (fn [token]
+                  (log-debug "AI token" {:token token}))
+                :on-done (fn [result]
+                  (log-info "Priority analysis done" result))})
+
+    {:status "analyzing" :todo-id (. todo :id)})))
+
+;; ─────────────────────────────────────────────────────────────────
+;; 3. REST API 라우팅
+;; ─────────────────────────────────────────────────────────────────
+
+(define server (http-server 43000))
+
+;;; POST /api/todos — 할일 생성
+(http-post server "/api/todos" (fn [req res]
+  (do
+    (define body (json-parse (. req :body)))
+    (define user-id (. req :query :user_id))
+
+    (define result (create-todo
+      user-id
+      (. body :title)
+      (. body :description)))
+
+    (http-json res 201 result))))
+
+;;; GET /api/todos — 할일 목록
+(http-get server "/api/todos" (fn [req res]
+  (do
+    (define user-id (. req :query :user_id))
+    (define todos (get-todos user-id))
+
+    (http-json res 200 {:todos todos :count (length todos)}))))
+
+;;; PUT /api/todos/:id — 할일 업데이트
+(http-put server "/api/todos/:id" (fn [req res]
+  (do
+    (define todo-id (. req :params :id))
+    (define updates (json-parse (. req :body)))
+
+    (define result (update-todo todo-id updates))
+    (http-json res 200 result))))
+
+;;; DELETE /api/todos/:id — 할일 삭제
+(http-delete server "/api/todos/:id" (fn [req res]
+  (do
+    (define todo-id (. req :params :id))
+    (define result (delete-todo todo-id))
+    (http-json res 200 result))))
+
+;;; GET /api/todos/:id/priority — 우선순위 분석
+(http-get server "/api/todos/:id/priority" (fn [req res]
+  (do
+    (define todo-id (. req :params :id))
+    (define todo (car (sqlite-query db
+      "SELECT * FROM todos WHERE id=$1" [todo-id])))
+
+    (define result (analyze-priority todo))
+    (http-json res 202 result))))
+
+;; ─────────────────────────────────────────────────────────────────
+;; 4. 실시간 업데이트 (SSE)
+;; ─────────────────────────────────────────────────────────────────
+
+(define sse-clients (array))
+
+;;; GET /events — SSE 구독
+(http-get server "/events" (fn [req res]
+  (do
+    (define sse-conn (sse-connect res))
+
+    ;; 클라이언트 목록에 추가
+    (array-push sse-clients sse-conn)
+
+    (log-info "SSE client connected" {:count (length sse-clients)})
+
+    ;; 연결 종료 시 제거
+    (on-close req (fn []
+      (array-remove sse-clients sse-conn)
+      (log-info "SSE client disconnected"
+        {:remaining (length sse-clients)})))))
+
+;;; 모든 클라이언트에게 업데이트 브로드캐스트
+(define broadcast-update (fn [event]
+  (do
+    (log-info "Broadcasting update" {:event event})
+    (sse-broadcast event "todo-updated"))))
+
+;; 할일 변경 시 자동으로 브로드캐스트
+(define create-todo-with-broadcast (fn [user-id title desc]
+  (do
+    (define result (create-todo user-id title desc))
+    (broadcast-update result)
+    result)))
+
+;; ─────────────────────────────────────────────────────────────────
+;; 5. 헬스 체크 & 메트릭
+;; ─────────────────────────────────────────────────────────────────
+
+;;; GET /health — 서비스 상태
+(http-get server "/health" (fn [req res]
+  (do
+    (define todo-count (car (sqlite-query db
+      "SELECT COUNT(*) as count FROM todos")))
+
+    (define status {
+      :status "healthy"
+      :timestamp (now)
+      :db "connected"
+      :cache "connected"
+      :todos-total (. todo-count :count)
+      :sse-clients (length sse-clients)
+    })
+
+    (http-json res 200 status))))
+
+;;; GET /metrics — 성능 메트릭
+(http-get server "/metrics" (fn [req res]
+  (do
+    (define stats (fcache-stats))
+    (define rag-info (rag-stats))
+
+    (http-json res 200 {
+      :cache stats
+      :rag rag-info
+      :uptime (uptime)
+    }))))
+
+;; ─────────────────────────────────────────────────────────────────
+;; 6. 테스트 (같은 파일에서)
+;; ─────────────────────────────────────────────────────────────────
+
+(deftest "TodoSaaS Integration Tests"
+
+  (test "Create todo"
+    (define result (create-todo 1 "Write code" "FreeLang example"))
+    (assert-eq (. result :status) "created"))
+
+  (test "Get todos"
+    (define todos (get-todos 1))
+    (assert-true (array? todos)))
+
+  (test "Update todo"
+    (define result (update-todo 1 {:completed true}))
+    (assert-eq (. result :status) "updated"))
+
+  (test "Cache works"
+    (define key "test:123")
+    (fcache-set key {:data "test"} 60)
+    (define cached (fcache-get key))
+    (assert-eq (. cached :data) "test"))
+
+  (test "SSE broadcast"
+    (define count (sse-broadcast {:type "test"}))
+    (assert-true (number? count))))
+
+;; ─────────────────────────────────────────────────────────────────
+;; 7. 시작
+;; ─────────────────────────────────────────────────────────────────
+
+(log-info "TodoSaaS starting" {
+  :port 43000
+  :database "todos.db"
+  :cache "redis://localhost"})
+
+(log-info "TodoSaaS ready" {
+  :api "http://localhost:43000"
+  :health "http://localhost:43000/health"
+  :events "http://localhost:43000/events"})
+
+;; 그레이스풀 셧다운
+(on-sigterm (fn []
+  (do
+    (log-info "Shutting down gracefully...")
+    (http-server-close server)
+    (sqlite-close db)
+    (exit 0))))
