@@ -1,7 +1,7 @@
 // stdlib-sqlite.ts — FreeLang v9 Step 51: SQLite3 내장 DB
 // 구현: Node.js child_process + sqlite3 CLI, 외부 npm 의존 없음
 
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -10,28 +10,75 @@ type CallFn = (name: string, args: any[]) => any;
 
 const sqliteConnections = new Map<string, { dbPath: string; connected: boolean }>();
 
+// ✅ Step 1: spawnSync 래퍼 (쉘 인젝션 방지)
+function sqliteRun(dbPath: string, sqlInput: string, json = false): string {
+  const args = json ? ['-json', dbPath] : [dbPath];
+  const result = spawnSync('sqlite3', args, {
+    input: sqlInput,
+    encoding: 'utf-8',
+    timeout: 10000,
+  });
+  if (result.status !== 0) throw new Error(result.stderr || 'SQLite error');
+  return result.stdout || '';
+}
+
+// ✅ Step 3: 입력 검증
+function validateTableName(name: string): void {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+    throw new Error(`Invalid table name: ${name}`);
+  }
+}
+
+function validateDbPath(dbPath: string): string {
+  const resolved = path.resolve(dbPath);
+  const cwd = process.cwd();
+  const home = os.homedir();
+  if (!resolved.startsWith(cwd) && !resolved.startsWith(home)) {
+    throw new Error(`Path traversal detected: ${dbPath}`);
+  }
+  return resolved;
+}
+
+// ✅ Step 2: 파라미터 바인딩 (SQL 인젝션 방지)
+function buildSqlWithParams(sql: string, params: any[]): string {
+  const paramLines = params.map((p, i) => {
+    if (p === null) return `.param set $${i + 1} NULL`;
+    if (typeof p === 'number') return `.param set $${i + 1} ${p}`;
+
+    // 문자열: 완전한 escape
+    const escaped = String(p)
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "''")
+      .replace(/\x00/g, '')
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\r');
+    return `.param set $${i + 1} '${escaped}'`;
+  });
+  return [...paramLines, sql].join('\n');
+}
+
 const sqliteModule = {
   // Step 51: SQLite 연결 열기
   "sqlite-open": (dbPath: string): string => {
     const id = `sqlite_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const fullPath = path.resolve(dbPath);
-
     try {
+      const fullPath = validateDbPath(dbPath);
+
       // DB 파일 디렉토리 생성
       const dir = path.dirname(fullPath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      // sqlite3 CLI로 테이블 생성 시도 (검증)
-      execSync(`sqlite3 "${fullPath}" ".tables"`, { stdio: 'pipe' });
+      // ✅ spawnSync로 변경 (쉘 인젝션 방지)
+      sqliteRun(fullPath, '.tables');
 
       sqliteConnections.set(id, {
         dbPath: fullPath,
         connected: true,
       });
       return id;
-    } catch (err) {
+    } catch (err: any) {
       return `error_${id}`;
     }
   },
@@ -42,23 +89,11 @@ const sqliteModule = {
     if (!conn) return { error: "Connection not found" };
 
     try {
-      // 파라미터 바인딩: $1, $2, ... → 실제 값으로 치환
-      let boundSql = sql;
-      params.forEach((param, i) => {
-        const placeholder = `$${i + 1}`;
-        const value = typeof param === 'string'
-          ? `'${param.replace(/'/g, "''")}'`
-          : param === null
-          ? 'NULL'
-          : String(param);
-        boundSql = boundSql.replace(new RegExp(`\\${placeholder}`, 'g'), value);
-      });
+      // ✅ Step 2: 파라미터 바인딩 (SQL 인젝션 방지)
+      const fullSql = buildSqlWithParams(sql, params);
 
-      // JSON 출력 포맷으로 실행
-      const result = execSync(
-        `sqlite3 -json "${conn.dbPath}" "${boundSql.replace(/"/g, '\\"')}"`,
-        { stdio: 'pipe', encoding: 'utf-8' }
-      );
+      // ✅ Step 1: spawnSync로 변경 (쉘 인젝션 방지)
+      const result = sqliteRun(conn.dbPath, fullSql, true);
 
       return result ? JSON.parse(result) : [];
     } catch (err: any) {
@@ -72,21 +107,11 @@ const sqliteModule = {
     if (!conn) return { error: "Connection not found" };
 
     try {
-      let boundSql = sql;
-      params.forEach((param, i) => {
-        const placeholder = `$${i + 1}`;
-        const value = typeof param === 'string'
-          ? `'${param.replace(/'/g, "''")}'`
-          : param === null
-          ? 'NULL'
-          : String(param);
-        boundSql = boundSql.replace(new RegExp(`\\${placeholder}`, 'g'), value);
-      });
+      // ✅ Step 2: 파라미터 바인딩 (SQL 인젝션 방지)
+      const fullSql = buildSqlWithParams(sql, params);
 
-      execSync(
-        `sqlite3 "${conn.dbPath}" "${boundSql.replace(/"/g, '\\"')}"`,
-        { stdio: 'pipe' }
-      );
+      // ✅ Step 1: spawnSync로 변경 (쉘 인젝션 방지)
+      sqliteRun(conn.dbPath, fullSql);
 
       return { ok: true, changes: 1 };
     } catch (err: any) {
@@ -104,14 +129,19 @@ const sqliteModule = {
     if (!conn) return false;
 
     try {
+      // ✅ Step 3: 테이블명 검증
+      validateTableName(tableName);
+
       const cols = Object.entries(schema)
-        .map(([name, type]) => `${name} ${type}`)
+        .map(([name, type]) => {
+          validateTableName(name); // 컬럼명도 검증
+          return `${name} ${type}`;
+        })
         .join(', ');
       const sql = `CREATE TABLE IF NOT EXISTS ${tableName} (id INTEGER PRIMARY KEY, ${cols})`;
 
-      execSync(`sqlite3 "${conn.dbPath}" "${sql.replace(/"/g, '\\"')}"`, {
-        stdio: 'pipe',
-      });
+      // ✅ Step 1: spawnSync로 변경 (쉘 인젝션 방지)
+      sqliteRun(conn.dbPath, sql);
 
       return true;
     } catch (err) {
@@ -125,13 +155,14 @@ const sqliteModule = {
     if (!conn) return { error: "Connection not found" };
 
     try {
-      execSync(`sqlite3 "${conn.dbPath}" "BEGIN TRANSACTION"`, { stdio: 'pipe' });
+      // ✅ Step 1: spawnSync로 변경 (쉘 인젝션 방지)
+      sqliteRun(conn.dbPath, 'BEGIN TRANSACTION');
       const result = callFn ? callFn(callback, [dbId]) : null;
-      execSync(`sqlite3 "${conn.dbPath}" "COMMIT"`, { stdio: 'pipe' });
+      sqliteRun(conn.dbPath, 'COMMIT');
       return result;
     } catch (err: any) {
       try {
-        execSync(`sqlite3 "${conn.dbPath}" "ROLLBACK"`, { stdio: 'pipe' });
+        sqliteRun(conn.dbPath, 'ROLLBACK');
       } catch {}
       return { error: err.message };
     }
@@ -156,6 +187,7 @@ const sqliteModule = {
   },
 };
 
-export function createSqliteModule(): Record<string, any> {
+// ✅ Step 8: callFn 콜백 주입
+export function createSqliteModule(callFn?: CallFn, callVal?: CallFn): Record<string, any> {
   return sqliteModule;
 }

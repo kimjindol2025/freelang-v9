@@ -136,11 +136,27 @@ export function loadAllStdlib(interp: InterpreterLike): void {
   interp.registerModule(createPhase3to5Module(      // Phase 3-5 Step 21-50: db-*, redis-*, kafka-*, k8s-*, aws-*, gcp-*, etc
     (n: string, a: any[]) => interp.callUserFunction(n, a)
   ));
-  interp.registerModule(createSqliteModule());      // Step 51: SQLite
-  interp.registerModule(createSseModule());         // Step 52: SSE
-  interp.registerModule(createFileCacheModule());   // Step 53: 파일 캐시
-  interp.registerModule(createStructuredLogModule()); // Step 54: 구조화 로깅
-  interp.registerModule(createStreamAiModule());    // Step 57: LLM 스트리밍
+  // ✅ Step 8: callFn 콜백 주입
+  interp.registerModule(createSqliteModule(
+    (n: string, a: any[]) => interp.callUserFunction(n, a),
+    (fnValue: any, a: any[]) => interp.callFunctionValue(fnValue, a)
+  ));      // Step 51: SQLite
+  interp.registerModule(createSseModule(
+    (n: string, a: any[]) => interp.callUserFunction(n, a),
+    (fnValue: any, a: any[]) => interp.callFunctionValue(fnValue, a)
+  ));         // Step 52: SSE
+  interp.registerModule(createFileCacheModule(
+    (n: string, a: any[]) => interp.callUserFunction(n, a),
+    (fnValue: any, a: any[]) => interp.callFunctionValue(fnValue, a)
+  ));   // Step 53: 파일 캐시
+  interp.registerModule(createStructuredLogModule(
+    (n: string, a: any[]) => interp.callUserFunction(n, a),
+    (fnValue: any, a: any[]) => interp.callFunctionValue(fnValue, a)
+  )); // Step 54: 구조화 로깅
+  interp.registerModule(createStreamAiModule(
+    (n: string, a: any[]) => interp.callUserFunction(n, a),
+    (fnValue: any, a: any[]) => interp.callFunctionValue(fnValue, a)
+  ));    // Step 57: LLM 스트리밍
   interp.registerModule(createPromptModule());      // Step 58: defprompt
   interp.registerModule(createEmbedModule());       // Step 59: 벡터 임베딩
   interp.registerModule(createRagV2Module());       // Step 60: RAG-V2

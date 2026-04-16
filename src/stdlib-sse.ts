@@ -9,6 +9,29 @@ const sseConnections = new Map<string, {
   closed: boolean;
 }>();
 
+// ✅ Step 4: CORS 화이트리스트
+function resolveAllowedOrigins(): string[] {
+  const allowed = (process.env.ALLOWED_ORIGINS || 'http://localhost:43000')
+    .split(',')
+    .map(o => o.trim());
+  return allowed;
+}
+
+function resolveOrigin(reqOrigin?: string): string {
+  const allowed = resolveAllowedOrigins();
+  return reqOrigin && allowed.includes(reqOrigin) ? reqOrigin : allowed[0];
+}
+
+// ✅ Step 4: 자동 메모리 정리 (60초마다)
+const cleanupInterval = setInterval(() => {
+  for (const [id, conn] of sseConnections.entries()) {
+    if (conn.closed) {
+      sseConnections.delete(id);
+    }
+  }
+}, 60_000);
+cleanupInterval.unref(); // 백그라운드 타이머
+
 const sseModule = {
   // Step 52: SSE 라우트 등록
   "sse-route": (server: any, path: string, handlerName: string): boolean => {
@@ -21,15 +44,19 @@ const sseModule = {
   },
 
   // Step 52: SSE 연결 생성
-  "sse-connect": (response: any): string => {
+  "sse-connect": (response: any, request?: any): string => {
     const id = `sse_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+    // ✅ Step 4: CORS 화이트리스트 (request.headers.origin 확인)
+    const origin = request?.headers?.origin || '';
+    const allowedOrigin = resolveOrigin(origin);
 
     // SSE 헤더 설정
     response.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': allowedOrigin,
     });
 
     sseConnections.set(id, {
@@ -54,7 +81,8 @@ const sseModule = {
       conn.response.write(sseMessage);
       return true;
     } catch (err) {
-      conn.closed = true;
+      // ✅ Step 4: 에러 시 즉시 삭제 (메모리 누수 방지)
+      sseConnections.delete(connId);
       return false;
     }
   },
@@ -81,13 +109,14 @@ const sseModule = {
     const payload = typeof data === 'string' ? data : JSON.stringify(data);
     const sseMessage = `event: ${event}\ndata: ${payload}\n\n`;
 
+    // ✅ Step 4: 에러 시 즉시 삭제 (메모리 누수 방지)
     for (const [id, conn] of sseConnections.entries()) {
       if (!conn.closed) {
         try {
           conn.response.write(sseMessage);
           sent++;
         } catch (err) {
-          conn.closed = true;
+          sseConnections.delete(id); // 즉시 삭제
         }
       }
     }
@@ -113,6 +142,7 @@ const sseModule = {
   },
 };
 
-export function createSseModule(): Record<string, any> {
+// ✅ Step 8: callFn 콜백 주입
+export function createSseModule(callFn?: CallFn, callVal?: CallFn): Record<string, any> {
   return sseModule;
 }

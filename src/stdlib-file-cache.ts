@@ -7,15 +7,39 @@ import * as os from 'os';
 
 const CACHE_DIR = path.join(os.homedir(), '.freelang-cache');
 
-// 캐시 디렉토리 초기화
-if (!fs.existsSync(CACHE_DIR)) {
-  fs.mkdirSync(CACHE_DIR, { recursive: true });
+// ✅ Step 5: 지연 초기화 (모듈 로드 시 fs 조작 제거)
+function ensureCacheDir(): void {
+  if (!fs.existsSync(CACHE_DIR)) {
+    fs.mkdirSync(CACHE_DIR, { recursive: true });
+  }
 }
+
+// ✅ Step 5: 자동 TTL 정리 (5분마다)
+const gcInterval = setInterval(() => {
+  try {
+    ensureCacheDir();
+    const now = Date.now();
+    const files = fs.readdirSync(CACHE_DIR);
+    for (const file of files) {
+      try {
+        const filePath = path.join(CACHE_DIR, file);
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const entry = JSON.parse(content);
+        if (entry.expiresAt < now) {
+          fs.unlinkSync(filePath);
+        }
+      } catch {}
+    }
+  } catch {}
+}, 5 * 60_000);
+gcInterval.unref(); // 백그라운드 타이머
 
 const fileCacheModule = {
   // Step 53: 캐시 설정
   "fcache-set": (key: string, data: any, ttlSeconds: number = 3600): boolean => {
     try {
+      ensureCacheDir(); // ✅ Step 5: 지연 초기화
+
       // 키 해시 (SHA256)로 파일명 생성
       const hash = crypto.createHash('sha256').update(key).digest('hex');
       const filePath = path.join(CACHE_DIR, hash);
@@ -40,21 +64,19 @@ const fileCacheModule = {
       const hash = crypto.createHash('sha256').update(key).digest('hex');
       const filePath = path.join(CACHE_DIR, hash);
 
-      if (!fs.existsSync(filePath)) {
-        return null;
-      }
-
+      // ✅ Step 5: TOCTOU 제거 - try-catch로 직접 읽기
       const content = fs.readFileSync(filePath, 'utf-8');
       const entry = JSON.parse(content);
 
       // TTL 확인
       if (entry.expiresAt < Date.now()) {
-        fs.unlinkSync(filePath);
+        try { fs.unlinkSync(filePath); } catch {}
         return null;
       }
 
       return entry.data;
     } catch (err) {
+      // ENOENT, JSON parse error 모두 null 반환
       return null;
     }
   },
@@ -62,6 +84,7 @@ const fileCacheModule = {
   // Step 53: 캐시 삭제
   "fcache-del": (key: string): boolean => {
     try {
+      ensureCacheDir();
       const hash = crypto.createHash('sha256').update(key).digest('hex');
       const filePath = path.join(CACHE_DIR, hash);
 
@@ -77,6 +100,7 @@ const fileCacheModule = {
   // Step 53: 패턴 무효화 (예: "user:*" → user:로 시작하는 모든 캐시 삭제)
   "fcache-invalidate": (pattern: string): number => {
     try {
+      ensureCacheDir();
       let count = 0;
       const files = fs.readdirSync(CACHE_DIR);
 
@@ -104,6 +128,7 @@ const fileCacheModule = {
   // Step 53: 만료된 캐시 정리
   "fcache-cleanup": (): number => {
     try {
+      ensureCacheDir();
       let count = 0;
       const now = Date.now();
       const files = fs.readdirSync(CACHE_DIR);
@@ -130,6 +155,7 @@ const fileCacheModule = {
   // Step 53: 캐시 통계
   "fcache-stats": (): any => {
     try {
+      ensureCacheDir();
       const files = fs.readdirSync(CACHE_DIR);
       let totalSize = 0;
       let validCount = 0;
@@ -169,6 +195,7 @@ const fileCacheModule = {
   // Step 53: 캐시 전체 삭제
   "fcache-clear": (): boolean => {
     try {
+      ensureCacheDir();
       const files = fs.readdirSync(CACHE_DIR);
       for (const file of files) {
         fs.unlinkSync(path.join(CACHE_DIR, file));
@@ -180,6 +207,7 @@ const fileCacheModule = {
   },
 };
 
-export function createFileCacheModule(): Record<string, any> {
+// ✅ Step 8: callFn 콜백 주입
+export function createFileCacheModule(callFn?: any, callVal?: any): Record<string, any> {
   return fileCacheModule;
 }

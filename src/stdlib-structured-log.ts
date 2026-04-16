@@ -14,13 +14,29 @@ interface LogConfig {
 let logConfig: LogConfig | null = null;
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
 
+// ✅ Step 7: 경로 검증 (경로 트래버설 방지)
+function validateLogPath(p: string): string {
+  const resolved = path.resolve(p);
+  const cwd = process.cwd();
+  const home = os.homedir();
+  const safe = [path.resolve('logs'), cwd, home];
+
+  if (!safe.some(b => resolved.startsWith(b))) {
+    throw new Error(`Invalid log path: ${p}`);
+  }
+  return resolved;
+}
+
 const structuredLogModule = {
   // Step 54: 로깅 초기화
   "log-init": (config: any): boolean => {
     try {
+      // ✅ Step 7: 경로 검증
+      const filePath = validateLogPath(config.file || 'logs/app.log');
+
       logConfig = {
         level: config.level || 'info',
-        file: config.file || 'logs/app.log',
+        file: filePath,
         maxSizeBytes: config.maxSizeBytes || 100 * 1024 * 1024, // 100MB
         maxFiles: config.maxFiles || 5,
       };
@@ -60,20 +76,25 @@ const structuredLogModule = {
       if (fs.existsSync(logConfig.file)) {
         const stat = fs.statSync(logConfig.file);
         if (stat.size > (logConfig.maxSizeBytes || 100 * 1024 * 1024)) {
-          // 로테이션: app.log → app.log.1, app.log.1 → app.log.2, ...
+          // ✅ Step 7: 로테이션 로직 단순화 및 버그 수정
           const dir = path.dirname(logConfig.file);
           const base = path.basename(logConfig.file);
+          const maxFiles = logConfig.maxFiles || 5;
 
-          for (let i = (logConfig.maxFiles || 5) - 1; i >= 1; i--) {
-            const oldFile = path.join(dir, `${base}.${i}`);
-            const newFile = path.join(dir, `${base}.${i + 1}`);
-            if (fs.existsSync(oldFile) && i === (logConfig.maxFiles || 5) - 1) {
-              fs.unlinkSync(oldFile);
-            } else if (fs.existsSync(oldFile)) {
-              fs.renameSync(oldFile, newFile);
+          // 역순으로 순회하며 파일 이동 (i+1 파일이 먼저 삭제되도록)
+          for (let i = maxFiles - 1; i >= 1; i--) {
+            const src = path.join(dir, `${base}.${i}`);
+            const dst = path.join(dir, `${base}.${i + 1}`);
+
+            if (fs.existsSync(dst)) {
+              fs.unlinkSync(dst); // 목표 파일 먼저 삭제
+            }
+            if (fs.existsSync(src)) {
+              fs.renameSync(src, dst);
             }
           }
 
+          // 현재 파일을 .1로 이동
           const rotatedFile = path.join(dir, `${base}.1`);
           fs.renameSync(logConfig.file, rotatedFile);
         }
@@ -193,6 +214,7 @@ const structuredLogModule = {
   },
 };
 
-export function createStructuredLogModule(): Record<string, any> {
+// ✅ Step 8: callFn 콜백 주입
+export function createStructuredLogModule(callFn?: any, callVal?: any): Record<string, any> {
   return structuredLogModule;
 }

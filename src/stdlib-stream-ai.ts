@@ -1,12 +1,17 @@
 // stdlib-stream-ai.ts — FreeLang v9 Step 57: LLM 스트리밍 응답 블록
 
 import * as https from 'https';
+import type { ClientRequest } from 'http';
 
 type CallFn = (name: string, args: any[]) => any;
 
+// ✅ Step 6: 활성 스트림 추적 (cancel 구현용)
+const activeStreams = new Map<string, { req: ClientRequest }>();
+
 const streamAIModule = {
   // Step 57: LLM 스트리밍 응답
-  "stream-ai": (config: any, callFn?: CallFn): void => {
+  "stream-ai": (config: any, callFn?: CallFn): string => {
+    const streamId = `stream_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const {
       model = 'claude-3-5-sonnet-20241022',
       prompt,
@@ -21,7 +26,7 @@ const streamAIModule = {
       if (callFn && onDoneFn) {
         callFn(onDoneFn, [{ error: 'ANTHROPIC_API_KEY not set' }]);
       }
-      return;
+      return streamId;
     }
 
     const messages = [
@@ -55,6 +60,22 @@ const streamAIModule = {
     const req = https.request(options, (res) => {
       let fullText = '';
 
+      // ✅ Step 6: HTTP 상태 코드 확인
+      if (res.statusCode !== 200) {
+        let errorBody = '';
+        res.on('data', (chunk) => {
+          errorBody += chunk.toString();
+        });
+        res.on('end', () => {
+          const err = new Error(`API ${res.statusCode}: ${errorBody}`);
+          if (callFn && onDoneFn) {
+            callFn(onDoneFn, [{ error: err.message, done: false }]);
+          }
+          activeStreams.delete(streamId);
+        });
+        return;
+      }
+
       res.on('data', (chunk: Buffer) => {
         const lines = chunk.toString().split('\n');
 
@@ -80,7 +101,12 @@ const streamAIModule = {
                   }
                 }
               }
-            } catch {}
+            } catch (err) {
+              // ✅ Step 6: JSON 파싱 에러 전파
+              if (callFn && onDoneFn) {
+                callFn(onDoneFn, [{ error: `Parse error: ${data}`, done: false }]);
+              }
+            }
           }
         }
       });
@@ -94,6 +120,7 @@ const streamAIModule = {
             console.error('on-done error:', err);
           }
         }
+        activeStreams.delete(streamId);
       });
     });
 
@@ -101,25 +128,40 @@ const streamAIModule = {
       if (callFn && onDoneFn) {
         callFn(onDoneFn, [{ error: err.message, done: false }]);
       }
+      activeStreams.delete(streamId);
     });
+
+    // ✅ Step 6: 스트림 추적
+    activeStreams.set(streamId, { req });
 
     req.write(body);
     req.end();
+
+    return streamId;
   },
 
   // Step 57: 스트림 상태 확인
   "stream-running?": (): boolean => {
-    // 구현: 활성 스트림 카운트 추적
-    return false;
+    return activeStreams.size > 0;
   },
 
   // Step 57: 스트림 취소
   "stream-cancel": (streamId: string): boolean => {
-    // 구현: 스트림 ID로 요청 취소
-    return true;
+    // ✅ Step 6: cancel 실제 구현
+    const stream = activeStreams.get(streamId);
+    if (!stream) return false;
+
+    try {
+      stream.req.destroy();
+      activeStreams.delete(streamId);
+      return true;
+    } catch (err) {
+      return false;
+    }
   },
 };
 
-export function createStreamAiModule(): Record<string, any> {
+// ✅ Step 8: callFn 콜백 주입
+export function createStreamAiModule(callFn?: CallFn, callVal?: CallFn): Record<string, any> {
   return streamAIModule;
 }
