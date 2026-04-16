@@ -11,6 +11,55 @@ type CallFn = (name: string, args: any[]) => any;
 
 const sqliteConnections = new Map<string, { dbPath: string; connected: boolean }>();
 
+// ✅ v10.1 Phase 2.1: SQLite 연결 풀 (동시성 강화)
+class SqlitePool {
+  private activeRequests = 0;
+  private maxConcurrent: number;
+  private waitQueue: Array<() => Promise<void>> = [];
+
+  constructor(maxConcurrent: number = 5) {
+    this.maxConcurrent = maxConcurrent;
+  }
+
+  async execute<T>(fn: () => Promise<T>): Promise<T> {
+    // 현재 active requests가 maxConcurrent에 도달하면 대기
+    while (this.activeRequests >= this.maxConcurrent) {
+      await new Promise((resolve) => {
+        this.waitQueue.push(resolve as any);
+        setTimeout(() => {}, 10); // 10ms 간격 대기
+      });
+    }
+
+    this.activeRequests++;
+    try {
+      return await fn();
+    } finally {
+      this.activeRequests--;
+
+      // 대기 중인 요청이 있으면 깨우기
+      if (this.waitQueue.length > 0) {
+        const resume = this.waitQueue.shift();
+        if (resume) resume();
+      }
+    }
+  }
+
+  getStats(): { active: number; maxConcurrent: number; waiting: number } {
+    return {
+      active: this.activeRequests,
+      maxConcurrent: this.maxConcurrent,
+      waiting: this.waitQueue.length,
+    };
+  }
+
+  setMaxConcurrent(max: number): void {
+    this.maxConcurrent = max;
+  }
+}
+
+// 글로벌 연결 풀
+const sqlitePool = new SqlitePool(5);
+
 // ✅ Step 1: spawnSync 래퍼 (쉘 인젝션 방지, 동기 호환)
 function sqliteRun(dbPath: string, sqlInput: string, json = false): string {
   const args = json ? ['-json', dbPath] : [dbPath];
@@ -25,7 +74,8 @@ function sqliteRun(dbPath: string, sqlInput: string, json = false): string {
 
 // ✅ v10.1 Phase 1.1: async 버전 (논블로킹 spawn)
 function sqliteRunAsync(dbPath: string, sqlInput: string, json = false, timeout = 10000): Promise<string> {
-  return new Promise((resolve, reject) => {
+  // ✅ v10.1 Phase 2.1: 연결 풀을 통한 실행
+  return sqlitePool.execute(() => new Promise<string>((resolve, reject) => {
     const args = json ? ['-json', dbPath] : [dbPath];
     const proc = spawn('sqlite3', args);
 
@@ -66,7 +116,7 @@ function sqliteRunAsync(dbPath: string, sqlInput: string, json = false, timeout 
       clearTimeout(timer);
       reject(err);
     });
-  });
+  }));
 }
 
 // ✅ Step 3: 입력 검증
@@ -325,6 +375,15 @@ const sqliteModule = {
       } catch {}
       return { error: err.message };
     }
+  },
+
+  // ✅ v10.1 Phase 2.1: 연결 풀 통계
+  "sqlite-pool-stats": (): any => {
+    return sqlitePool.getStats();
+  },
+
+  "sqlite-pool-set-max": (max: number): void => {
+    sqlitePool.setMaxConcurrent(max);
   },
 };
 
