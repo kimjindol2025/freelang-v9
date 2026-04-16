@@ -42,6 +42,7 @@ import { createWorkerModule } from "./stdlib-worker";       // Phase 1 Step 1: W
 import { createMutexModule } from "./stdlib-mutex";         // Phase 1 Step 3: Mutex & Semaphore (동기화)
 import { createWaitModule } from "./stdlib-wait";           // Phase 1 Step 4: WAIT-ALL (병렬 완료 대기)
 import { createPhase1CompletionModule } from "./stdlib-phase1-completion"; // Phase 1 Step 5-8
+import { createPhase2FrameworkModule } from "./stdlib-phase2-framework"; // Phase 2 Step 9-20
 
 // Minimal Interpreter interface (순환 import 방지)
 interface InterpreterLike {
@@ -115,6 +116,9 @@ export function loadAllStdlib(interp: InterpreterLike): void {
     (n: string, a: any[]) => interp.callUserFunction(n, a)
   ));
   interp.registerModule(createPhase1CompletionModule( // Phase 1 Step 5-8: cluster-*, async-*, result-*, type-*
+    (n: string, a: any[]) => interp.callUserFunction(n, a)
+  ));
+  interp.registerModule(createPhase2FrameworkModule( // Phase 2 Step 9-20: upload-*, oauth-*, session-*, middleware-*, etc
     (n: string, a: any[]) => interp.callUserFunction(n, a)
   ));
 }
