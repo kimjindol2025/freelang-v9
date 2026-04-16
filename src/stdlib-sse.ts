@@ -23,13 +23,14 @@ function resolveOrigin(reqOrigin?: string): string {
 }
 
 // ✅ Step 4: 자동 메모리 정리 (60초마다)
+// ✅ v10.1 Phase 2.2: 메모리 최적화 (60s→30s)
 const cleanupInterval = setInterval(() => {
   for (const [id, conn] of sseConnections.entries()) {
     if (conn.closed) {
       sseConnections.delete(id);
     }
   }
-}, 60_000);
+}, 30_000); // 30초로 단축
 cleanupInterval.unref(); // 백그라운드 타이머
 
 const sseModule = {

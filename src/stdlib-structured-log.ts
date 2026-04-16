@@ -63,7 +63,8 @@ const structuredLogModule = {
         level: config.level || 'info',
         file: filePath,
         maxSizeBytes: config.maxSizeBytes || 100 * 1024 * 1024, // 100MB
-        maxFiles: config.maxFiles || 5,
+        // ✅ v10.1 Phase 2.2: 메모리 최적화 (5→3)
+        maxFiles: config.maxFiles || 3,
       };
 
       // 로그 디렉토리 생성

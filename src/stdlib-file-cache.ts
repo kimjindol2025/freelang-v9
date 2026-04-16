@@ -15,6 +15,7 @@ function ensureCacheDir(): void {
 }
 
 // ✅ Step 5: 자동 TTL 정리 (5분마다)
+// ✅ v10.1 Phase 2.2: 메모리 최적화 (300s→60s)
 const gcInterval = setInterval(() => {
   try {
     ensureCacheDir();
@@ -31,7 +32,7 @@ const gcInterval = setInterval(() => {
       } catch {}
     }
   } catch {}
-}, 5 * 60_000);
+}, 60_000); // 60초로 단축 (5분→1분)
 gcInterval.unref(); // 백그라운드 타이머
 
 const fileCacheModule = {
