@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import * as os from 'os';
+import { withTimeout, DEFAULT_TIMEOUTS } from './stdlib-timeout';
 
 const CACHE_DIR = path.join(os.homedir(), '.freelang-cache');
 
@@ -273,7 +274,8 @@ const fileCacheModule = {
 
       const patternPrefix = pattern.replace(/\*$/, '');
 
-      await Promise.all(
+      // ✅ v10.1 Phase 2.3: timeout 적용
+      const operation = Promise.all(
         files.map(async (file) => {
           const filePath = path.join(CACHE_DIR, file);
           try {
@@ -288,6 +290,7 @@ const fileCacheModule = {
         })
       );
 
+      await withTimeout(operation, DEFAULT_TIMEOUTS.FILE_IO);
       return count;
     } catch (err) {
       return 0;

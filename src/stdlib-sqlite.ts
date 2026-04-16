@@ -6,6 +6,7 @@ import { execSync, spawnSync, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { withTimeout, DEFAULT_TIMEOUTS } from './stdlib-timeout';
 
 type CallFn = (name: string, args: any[]) => any;
 
@@ -60,6 +61,9 @@ class SqlitePool {
 // 글로벌 연결 풀
 const sqlitePool = new SqlitePool(5);
 
+// ✅ v10.1 Phase 2.3: Timeout 설정
+let sqliteTimeout = DEFAULT_TIMEOUTS.SQLITE;
+
 // ✅ Step 1: spawnSync 래퍼 (쉘 인젝션 방지, 동기 호환)
 function sqliteRun(dbPath: string, sqlInput: string, json = false): string {
   const args = json ? ['-json', dbPath] : [dbPath];
@@ -73,9 +77,15 @@ function sqliteRun(dbPath: string, sqlInput: string, json = false): string {
 }
 
 // ✅ v10.1 Phase 1.1: async 버전 (논블로킹 spawn)
-function sqliteRunAsync(dbPath: string, sqlInput: string, json = false, timeout = 10000): Promise<string> {
+// ✅ v10.1 Phase 2.3: Timeout 정책 추가
+function sqliteRunAsync(
+  dbPath: string,
+  sqlInput: string,
+  json = false,
+  timeout = DEFAULT_TIMEOUTS.SQLITE
+): Promise<string> {
   // ✅ v10.1 Phase 2.1: 연결 풀을 통한 실행
-  return sqlitePool.execute(() => new Promise<string>((resolve, reject) => {
+  const promise = sqlitePool.execute(() => new Promise<string>((resolve, reject) => {
     const args = json ? ['-json', dbPath] : [dbPath];
     const proc = spawn('sqlite3', args);
 
@@ -117,6 +127,9 @@ function sqliteRunAsync(dbPath: string, sqlInput: string, json = false, timeout 
       reject(err);
     });
   }));
+
+  // ✅ v10.1 Phase 2.3: 외부 timeout 적용 (Promise.race)
+  return withTimeout(promise, timeout, `SQLite query timeout after ${timeout}ms`);
 }
 
 // ✅ Step 3: 입력 검증
@@ -295,8 +308,8 @@ const sqliteModule = {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      // async로 변경
-      await sqliteRunAsync(fullPath, '.tables');
+      // ✅ v10.1 Phase 2.3: 글로벌 timeout 사용
+      await sqliteRunAsync(fullPath, '.tables', false, sqliteTimeout);
 
       sqliteConnections.set(id, {
         dbPath: fullPath,
@@ -314,7 +327,7 @@ const sqliteModule = {
 
     try {
       const fullSql = buildSqlWithParams(sql, params);
-      const result = await sqliteRunAsync(conn.dbPath, fullSql, true);
+      const result = await sqliteRunAsync(conn.dbPath, fullSql, true, sqliteTimeout);
       return result ? JSON.parse(result) : [];
     } catch (err: any) {
       return { error: err.message };
@@ -327,7 +340,7 @@ const sqliteModule = {
 
     try {
       const fullSql = buildSqlWithParams(sql, params);
-      await sqliteRunAsync(conn.dbPath, fullSql);
+      await sqliteRunAsync(conn.dbPath, fullSql, false, sqliteTimeout);
       return { ok: true, changes: 1 };
     } catch (err: any) {
       return { error: err.message };
@@ -353,7 +366,7 @@ const sqliteModule = {
         .join(', ');
       const sql = `CREATE TABLE IF NOT EXISTS ${tableName} (id INTEGER PRIMARY KEY, ${cols})`;
 
-      await sqliteRunAsync(conn.dbPath, sql);
+      await sqliteRunAsync(conn.dbPath, sql, false, sqliteTimeout);
       return true;
     } catch (err) {
       return false;
@@ -365,13 +378,13 @@ const sqliteModule = {
     if (!conn) return { error: "Connection not found" };
 
     try {
-      await sqliteRunAsync(conn.dbPath, 'BEGIN TRANSACTION');
+      await sqliteRunAsync(conn.dbPath, 'BEGIN TRANSACTION', false, sqliteTimeout);
       const result = callFn ? callFn(callback, [dbId]) : null;
-      await sqliteRunAsync(conn.dbPath, 'COMMIT');
+      await sqliteRunAsync(conn.dbPath, 'COMMIT', false, sqliteTimeout);
       return result;
     } catch (err: any) {
       try {
-        await sqliteRunAsync(conn.dbPath, 'ROLLBACK');
+        await sqliteRunAsync(conn.dbPath, 'ROLLBACK', false, sqliteTimeout);
       } catch {}
       return { error: err.message };
     }
@@ -384,6 +397,19 @@ const sqliteModule = {
 
   "sqlite-pool-set-max": (max: number): void => {
     sqlitePool.setMaxConcurrent(max);
+  },
+
+  // ✅ v10.1 Phase 2.3: Timeout 설정
+  "sqlite-set-timeout": (timeoutMs: number): void => {
+    sqliteTimeout = timeoutMs;
+  },
+
+  "sqlite-get-timeout": (): number => {
+    return sqliteTimeout;
+  },
+
+  "sqlite-default-timeout": (): number => {
+    return DEFAULT_TIMEOUTS.SQLITE;
   },
 };
 
