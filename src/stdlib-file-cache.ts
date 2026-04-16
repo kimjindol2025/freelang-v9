@@ -205,6 +205,175 @@ const fileCacheModule = {
       return false;
     }
   },
+
+  // ✅ v10.1 Phase 1.2: Async 버전 (논블로킹)
+  "fcache-set-async": async (key: string, data: any, ttlSeconds: number = 3600): Promise<boolean> => {
+    try {
+      ensureCacheDir();
+
+      const hash = crypto.createHash('sha256').update(key).digest('hex');
+      const filePath = path.join(CACHE_DIR, hash);
+
+      const cacheEntry = {
+        key,
+        data,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + (ttlSeconds * 1000),
+      };
+
+      await fs.promises.writeFile(filePath, JSON.stringify(cacheEntry), 'utf-8');
+      return true;
+    } catch (err) {
+      return false;
+    }
+  },
+
+  "fcache-get-async": async (key: string): Promise<any> => {
+    try {
+      const hash = crypto.createHash('sha256').update(key).digest('hex');
+      const filePath = path.join(CACHE_DIR, hash);
+
+      const content = await fs.promises.readFile(filePath, 'utf-8');
+      const entry = JSON.parse(content);
+
+      if (entry.expiresAt < Date.now()) {
+        try { await fs.promises.unlink(filePath); } catch {}
+        return null;
+      }
+
+      return entry.data;
+    } catch (err) {
+      return null;
+    }
+  },
+
+  "fcache-del-async": async (key: string): Promise<boolean> => {
+    try {
+      ensureCacheDir();
+      const hash = crypto.createHash('sha256').update(key).digest('hex');
+      const filePath = path.join(CACHE_DIR, hash);
+
+      try {
+        await fs.promises.unlink(filePath);
+      } catch (err: any) {
+        if (err.code !== 'ENOENT') throw err;
+      }
+      return true;
+    } catch (err) {
+      return false;
+    }
+  },
+
+  "fcache-invalidate-async": async (pattern: string): Promise<number> => {
+    try {
+      ensureCacheDir();
+      let count = 0;
+      const files = await fs.promises.readdir(CACHE_DIR);
+
+      const patternPrefix = pattern.replace(/\*$/, '');
+
+      await Promise.all(
+        files.map(async (file) => {
+          const filePath = path.join(CACHE_DIR, file);
+          try {
+            const content = await fs.promises.readFile(filePath, 'utf-8');
+            const entry = JSON.parse(content);
+
+            if (entry.key.startsWith(patternPrefix)) {
+              await fs.promises.unlink(filePath);
+              count++;
+            }
+          } catch {}
+        })
+      );
+
+      return count;
+    } catch (err) {
+      return 0;
+    }
+  },
+
+  "fcache-cleanup-async": async (): Promise<number> => {
+    try {
+      ensureCacheDir();
+      let count = 0;
+      const now = Date.now();
+      const files = await fs.promises.readdir(CACHE_DIR);
+
+      await Promise.all(
+        files.map(async (file) => {
+          const filePath = path.join(CACHE_DIR, file);
+          try {
+            const content = await fs.promises.readFile(filePath, 'utf-8');
+            const entry = JSON.parse(content);
+
+            if (entry.expiresAt < now) {
+              await fs.promises.unlink(filePath);
+              count++;
+            }
+          } catch {}
+        })
+      );
+
+      return count;
+    } catch (err) {
+      return 0;
+    }
+  },
+
+  "fcache-stats-async": async (): Promise<any> => {
+    try {
+      ensureCacheDir();
+      const files = await fs.promises.readdir(CACHE_DIR);
+      let totalSize = 0;
+      let validCount = 0;
+      let expiredCount = 0;
+      const now = Date.now();
+
+      await Promise.all(
+        files.map(async (file) => {
+          const filePath = path.join(CACHE_DIR, file);
+          try {
+            const stat = await fs.promises.stat(filePath);
+            totalSize += stat.size;
+
+            const content = await fs.promises.readFile(filePath, 'utf-8');
+            const entry = JSON.parse(content);
+
+            if (entry.expiresAt > now) {
+              validCount++;
+            } else {
+              expiredCount++;
+            }
+          } catch {}
+        })
+      );
+
+      return {
+        cacheDir: CACHE_DIR,
+        totalFiles: files.length,
+        validCount,
+        expiredCount,
+        totalSizeBytes: totalSize,
+        totalSizeMB: (totalSize / 1024 / 1024).toFixed(2),
+      };
+    } catch (err) {
+      return { error: String(err) };
+    }
+  },
+
+  "fcache-clear-async": async (): Promise<boolean> => {
+    try {
+      ensureCacheDir();
+      const files = await fs.promises.readdir(CACHE_DIR);
+      await Promise.all(
+        files.map((file) => fs.promises.unlink(path.join(CACHE_DIR, file)))
+      );
+      return true;
+    } catch (err) {
+      return false;
+    }
+  },
 };
 
 // ✅ Step 8: callFn 콜백 주입

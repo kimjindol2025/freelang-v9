@@ -1,7 +1,8 @@
 // stdlib-sqlite.ts — FreeLang v9 Step 51: SQLite3 내장 DB
 // 구현: Node.js child_process + sqlite3 CLI, 외부 npm 의존 없음
+// v10.1: 비동기 I/O 지원 (spawn → Promise)
 
-import { execSync, spawnSync } from 'child_process';
+import { execSync, spawnSync, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -10,7 +11,7 @@ type CallFn = (name: string, args: any[]) => any;
 
 const sqliteConnections = new Map<string, { dbPath: string; connected: boolean }>();
 
-// ✅ Step 1: spawnSync 래퍼 (쉘 인젝션 방지)
+// ✅ Step 1: spawnSync 래퍼 (쉘 인젝션 방지, 동기 호환)
 function sqliteRun(dbPath: string, sqlInput: string, json = false): string {
   const args = json ? ['-json', dbPath] : [dbPath];
   const result = spawnSync('sqlite3', args, {
@@ -20,6 +21,52 @@ function sqliteRun(dbPath: string, sqlInput: string, json = false): string {
   });
   if (result.status !== 0) throw new Error(result.stderr || 'SQLite error');
   return result.stdout || '';
+}
+
+// ✅ v10.1 Phase 1.1: async 버전 (논블로킹 spawn)
+function sqliteRunAsync(dbPath: string, sqlInput: string, json = false, timeout = 10000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const args = json ? ['-json', dbPath] : [dbPath];
+    const proc = spawn('sqlite3', args);
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    // 타이머 설정
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill();
+      reject(new Error(`SQLite query timeout after ${timeout}ms`));
+    }, timeout);
+
+    proc.stdin.write(sqlInput);
+    proc.stdin.end();
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) return;
+
+      if (code !== 0) {
+        reject(new Error(stderr || 'SQLite error'));
+      } else {
+        resolve(stdout);
+      }
+    });
+
+    proc.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
 }
 
 // ✅ Step 3: 입력 검증
@@ -183,6 +230,100 @@ const sqliteModule = {
       return true;
     } catch (err) {
       return false;
+    }
+  },
+
+  // ✅ v10.1 Phase 1.1: Async 버전 (논블로킹)
+  "sqlite-open-async": async (dbPath: string): Promise<string> => {
+    const id = `sqlite_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    try {
+      const fullPath = validateDbPath(dbPath);
+
+      // DB 파일 디렉토리 생성
+      const dir = path.dirname(fullPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      // async로 변경
+      await sqliteRunAsync(fullPath, '.tables');
+
+      sqliteConnections.set(id, {
+        dbPath: fullPath,
+        connected: true,
+      });
+      return id;
+    } catch (err: any) {
+      return `error_${id}`;
+    }
+  },
+
+  "sqlite-query-async": async (dbId: string, sql: string, params: any[] = []): Promise<any> => {
+    const conn = sqliteConnections.get(dbId);
+    if (!conn) return { error: "Connection not found" };
+
+    try {
+      const fullSql = buildSqlWithParams(sql, params);
+      const result = await sqliteRunAsync(conn.dbPath, fullSql, true);
+      return result ? JSON.parse(result) : [];
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  },
+
+  "sqlite-exec-async": async (dbId: string, sql: string, params: any[] = []): Promise<any> => {
+    const conn = sqliteConnections.get(dbId);
+    if (!conn) return { error: "Connection not found" };
+
+    try {
+      const fullSql = buildSqlWithParams(sql, params);
+      await sqliteRunAsync(conn.dbPath, fullSql);
+      return { ok: true, changes: 1 };
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  },
+
+  "sqlite-create-table-async": async (
+    dbId: string,
+    tableName: string,
+    schema: any
+  ): Promise<boolean> => {
+    const conn = sqliteConnections.get(dbId);
+    if (!conn) return false;
+
+    try {
+      validateTableName(tableName);
+
+      const cols = Object.entries(schema)
+        .map(([name, type]) => {
+          validateTableName(name);
+          return `${name} ${type}`;
+        })
+        .join(', ');
+      const sql = `CREATE TABLE IF NOT EXISTS ${tableName} (id INTEGER PRIMARY KEY, ${cols})`;
+
+      await sqliteRunAsync(conn.dbPath, sql);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  },
+
+  "sqlite-transaction-async": async (dbId: string, callback: string, callFn?: CallFn): Promise<any> => {
+    const conn = sqliteConnections.get(dbId);
+    if (!conn) return { error: "Connection not found" };
+
+    try {
+      await sqliteRunAsync(conn.dbPath, 'BEGIN TRANSACTION');
+      const result = callFn ? callFn(callback, [dbId]) : null;
+      await sqliteRunAsync(conn.dbPath, 'COMMIT');
+      return result;
+    } catch (err: any) {
+      try {
+        await sqliteRunAsync(conn.dbPath, 'ROLLBACK');
+      } catch {}
+      return { error: err.message };
     }
   },
 };

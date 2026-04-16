@@ -27,6 +27,31 @@ function validateLogPath(p: string): string {
   return resolved;
 }
 
+// ✅ v10.1 Phase 1.3: 비동기 로그 버퍼링
+let logBuffer: string[] = [];
+let flushTimer: NodeJS.Timeout | null = null;
+
+async function flushLogBuffer(): Promise<void> {
+  if (!logConfig || logBuffer.length === 0) return;
+
+  try {
+    const lines = logBuffer.join('\n') + '\n';
+    await fs.promises.appendFile(logConfig.file, lines, 'utf-8');
+    logBuffer = [];
+  } catch (err) {
+    console.error('Log buffer flush error:', err);
+  }
+}
+
+function scheduleFlush(): void {
+  if (flushTimer) return;
+
+  flushTimer = setTimeout(async () => {
+    flushTimer = null;
+    await flushLogBuffer();
+  }, 100);
+}
+
 const structuredLogModule = {
   // Step 54: 로깅 초기화
   "log-init": (config: any): boolean => {
@@ -212,9 +237,187 @@ const structuredLogModule = {
       return false;
     }
   },
+
+  // ✅ v10.1 Phase 1.3: Async 버전 (버퍼링)
+  "_writeLogAsync": async (level: string, message: string, context: any = {}): Promise<void> => {
+    if (!logConfig) return;
+
+    const levelNum = LOG_LEVELS[level as keyof typeof LOG_LEVELS] || 1;
+    const configLevelNum = LOG_LEVELS[logConfig.level] || 1;
+
+    if (levelNum < configLevelNum) return;
+
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      context,
+      pid: process.pid,
+    };
+
+    try {
+      // 파일 크기 확인 및 로테이션 (동기로 유지 — 메타 정보만)
+      if (fs.existsSync(logConfig.file)) {
+        const stat = fs.statSync(logConfig.file);
+        if (stat.size > (logConfig.maxSizeBytes || 100 * 1024 * 1024)) {
+          const dir = path.dirname(logConfig.file);
+          const base = path.basename(logConfig.file);
+          const maxFiles = logConfig.maxFiles || 5;
+
+          for (let i = maxFiles - 1; i >= 1; i--) {
+            const src = path.join(dir, `${base}.${i}`);
+            const dst = path.join(dir, `${base}.${i + 1}`);
+
+            if (fs.existsSync(dst)) {
+              fs.unlinkSync(dst);
+            }
+            if (fs.existsSync(src)) {
+              fs.renameSync(src, dst);
+            }
+          }
+
+          const rotatedFile = path.join(dir, `${base}.1`);
+          fs.renameSync(logConfig.file, rotatedFile);
+        }
+      }
+
+      // 버퍼에 추가
+      logBuffer.push(JSON.stringify(logEntry));
+
+      // 10개 이상이면 즉시 flush
+      if (logBuffer.length >= 10) {
+        await flushLogBuffer();
+      } else {
+        scheduleFlush();
+      }
+    } catch (err) {
+      console.error('Async log write error:', err);
+    }
+  },
+
+  "log-debug-async": async (message: string, context: any = {}): Promise<void> => {
+    await structuredLogModule._writeLogAsync('debug', message, context);
+  },
+
+  "log-info-async": async (message: string, context: any = {}): Promise<void> => {
+    await structuredLogModule._writeLogAsync('info', message, context);
+  },
+
+  "log-warn-async": async (message: string, context: any = {}): Promise<void> => {
+    await structuredLogModule._writeLogAsync('warn', message, context);
+  },
+
+  "log-error-async": async (message: string, context: any = {}): Promise<void> => {
+    await structuredLogModule._writeLogAsync('error', message, context);
+  },
+
+  "log-structured-async": async (level: string, message: string, context: any = {}): Promise<void> => {
+    await structuredLogModule._writeLogAsync(level, message, context);
+  },
+
+  "log-read-async": async (lines: number = 100): Promise<any[]> => {
+    if (!logConfig) return [];
+
+    try {
+      if (!fs.existsSync(logConfig.file)) return [];
+
+      const content = await fs.promises.readFile(logConfig.file, 'utf-8');
+      const allLines = content.trim().split('\n');
+      const lastN = allLines.slice(-lines);
+
+      return lastN.map(line => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return { raw: line };
+        }
+      });
+    } catch (err) {
+      return [];
+    }
+  },
+
+  "log-filter-async": async (level: string, limit: number = 100): Promise<any[]> => {
+    if (!logConfig) return [];
+
+    try {
+      if (!fs.existsSync(logConfig.file)) return [];
+
+      const content = await fs.promises.readFile(logConfig.file, 'utf-8');
+      const allLines = content.trim().split('\n');
+
+      return allLines
+        .map(line => {
+          try {
+            return JSON.parse(line);
+          } catch {
+            return null;
+          }
+        })
+        .filter((entry: any) => entry && entry.level === level)
+        .slice(-limit);
+    } catch (err) {
+      return [];
+    }
+  },
+
+  "log-size-async": async (): Promise<any> => {
+    if (!logConfig) return { error: 'Not initialized' };
+
+    try {
+      if (!fs.existsSync(logConfig.file)) {
+        return { sizeBytes: 0, sizeMB: '0.00' };
+      }
+
+      const stat = await fs.promises.stat(logConfig.file);
+      return {
+        file: logConfig.file,
+        sizeBytes: stat.size,
+        sizeMB: (stat.size / 1024 / 1024).toFixed(2),
+        mtime: stat.mtime.toISOString(),
+      };
+    } catch (err) {
+      return { error: String(err) };
+    }
+  },
+
+  "log-clear-async": async (): Promise<boolean> => {
+    if (!logConfig) return false;
+
+    try {
+      // 버퍼 먼저 flush
+      await flushLogBuffer();
+
+      if (fs.existsSync(logConfig.file)) {
+        await fs.promises.unlink(logConfig.file);
+      }
+      return true;
+    } catch (err) {
+      return false;
+    }
+  },
+
+  "log-flush": async (): Promise<void> => {
+    await flushLogBuffer();
+  },
 };
 
 // ✅ Step 8: callFn 콜백 주입
 export function createStructuredLogModule(callFn?: any, callVal?: any): Record<string, any> {
   return structuredLogModule;
 }
+
+// ✅ v10.1 Phase 1.3: Graceful shutdown
+process.on('SIGTERM', async () => {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+  }
+  await flushLogBuffer();
+});
+
+process.on('SIGINT', async () => {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+  }
+  await flushLogBuffer();
+});
