@@ -54,6 +54,7 @@ import { createEmbedModule } from "./stdlib-embed";         // Step 59: 벡터 �
 import { createRagV2Module } from "./stdlib-rag-v2";        // Step 60: RAG-V2
 import { createAiToolsModule } from "./stdlib-ai-tools";    // Step 61: AI-TOOL
 import { createAiPipelineModule } from "./stdlib-ai-pipeline"; // Step 62: AI-PIPELINE
+import { createCodegenModule } from "./stdlib-codegen";    // Step 75-80: 코드 생성 & 에이전트
 
 // Minimal Interpreter interface (순환 import 방지)
 interface InterpreterLike {
@@ -145,4 +146,5 @@ export function loadAllStdlib(interp: InterpreterLike): void {
   interp.registerModule(createRagV2Module());       // Step 60: RAG-V2
   interp.registerModule(createAiToolsModule());     // Step 61: AI-TOOL
   interp.registerModule(createAiPipelineModule());  // Step 62: AI-PIPELINE
+  interp.registerModule(createCodegenModule());     // Step 75-80: 코드 생성
 }
