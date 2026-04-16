@@ -48,6 +48,12 @@ import { createSqliteModule } from "./stdlib-sqlite";       // Step 51: SQLite D
 import { createSseModule } from "./stdlib-sse";             // Step 52: SSE 스트리밍
 import { createFileCacheModule } from "./stdlib-file-cache"; // Step 53: 파일 캐시
 import { createStructuredLogModule } from "./stdlib-structured-log"; // Step 54: 구조화 로깅
+import { createStreamAiModule } from "./stdlib-stream-ai";  // Step 57: LLM 스트리밍
+import { createPromptModule } from "./stdlib-prompt";       // Step 58: defprompt
+import { createEmbedModule } from "./stdlib-embed";         // Step 59: 벡터 임베딩
+import { createRagV2Module } from "./stdlib-rag-v2";        // Step 60: RAG-V2
+import { createAiToolsModule } from "./stdlib-ai-tools";    // Step 61: AI-TOOL
+import { createAiPipelineModule } from "./stdlib-ai-pipeline"; // Step 62: AI-PIPELINE
 
 // Minimal Interpreter interface (순환 import 방지)
 interface InterpreterLike {
@@ -133,4 +139,10 @@ export function loadAllStdlib(interp: InterpreterLike): void {
   interp.registerModule(createSseModule());         // Step 52: SSE
   interp.registerModule(createFileCacheModule());   // Step 53: 파일 캐시
   interp.registerModule(createStructuredLogModule()); // Step 54: 구조화 로깅
+  interp.registerModule(createStreamAiModule());    // Step 57: LLM 스트리밍
+  interp.registerModule(createPromptModule());      // Step 58: defprompt
+  interp.registerModule(createEmbedModule());       // Step 59: 벡터 임베딩
+  interp.registerModule(createRagV2Module());       // Step 60: RAG-V2
+  interp.registerModule(createAiToolsModule());     // Step 61: AI-TOOL
+  interp.registerModule(createAiPipelineModule());  // Step 62: AI-PIPELINE
 }
