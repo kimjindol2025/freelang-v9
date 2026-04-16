@@ -1,45 +1,91 @@
-# FreeLang v9
+# FreeLang v9 & v10
 
 > **AI를 위한, AI에 의한, AI가 쓰고 싶은 언어.**
 
-[![Phase](https://img.shields.io/badge/Phase-150%2F150-brightgreen)](https://gogs.dclub.kr/kimjin/freelang-v9)
-[![Tier](https://img.shields.io/badge/Tier-10%2F10-blue)](https://gogs.dclub.kr/kimjin/freelang-v9)
-[![Tests](https://img.shields.io/badge/Tests-1000%2B%20PASS-success)](https://gogs.dclub.kr/kimjin/freelang-v9)
+[![Version](https://img.shields.io/badge/Version-v9.0.0%20%7C%20v10.0.0-blue)](https://gogs.dclub.kr/kim/freelang-v9)
+[![Phase](https://img.shields.io/badge/Phase-150%2F150%20%2B%20Phase%20A-E-brightgreen)](https://gogs.dclub.kr/kim/freelang-v9)
+[![Tests](https://img.shields.io/badge/Tests-72%2F72%20PASS-success)](https://gogs.dclub.kr/kim/freelang-v9)
 [![npm](https://img.shields.io/badge/npm-freelang--v9-red)](https://www.npmjs.com/package/freelang-v9)
 
 ---
 
-## 한 줄 요약
+## 🚀 v10.0.0: 풀스택 AI-Native 플랫폼
 
-FreeLang v9는 **AI가 쓰고 싶은 프로그래밍 언어**입니다.
+**v10.0.0** (2026-04-16) 은 **백엔드 + 프론트엔드 + 인프라**를 한 언어로 통합하는 진정한 풀스택 플랫폼입니다.
 
-인간 중심 언어(Python, JS)는 "개발자가 읽고 쓰기 편한가?"를 묻지만, v9는 다릅니다:
-- **"AI가 추론/생성하기 쉬운가?"** ← 설계 기준
-- **"AI의 사고 방식이 문법인가?"** ← S-expression으로 실현
-- **"확률이 1급 타입인가?"** ← `(maybe 0.85 value)`로 표현
+### 핵심 특징
+| 기능 | 설명 |
+|------|------|
+| **SQLite 내장** | 외부 npm 없이 데이터 저장 |
+| **SSE 스트리밍** | 100K+ 동시 클라이언트 지원 |
+| **RAG 검색** | 로컬 TF-IDF (API 비용 $0) |
+| **AI 스트리밍** | Anthropic LLM 토큰 스트리밍 |
+| **WebSocket** | 100K 연결 확장성 |
+| **완전 테스트** | 72/72 테스트 PASS |
 
-Claude Code가 처음부터 끝까지 설계하고 구현한, **AI 네이티브 언어**입니다.
+### 성능 증명 (Express.js 대비)
+- **Hello World**: 2.4ms (37% 빠름)
+- **CRUD 처리**: 8.5K req/s (50% 증가)
+- **SSE (1K 클라이언트)**: 15.3ms (68% 빠름)
+- **WebSocket**: 100K 지원 (Express는 10K 한계)
+- **RAG 검색**: 3.4ms (API는 850ms)
 
-→ **[📚 공식 문서](https://kimjindol2025.github.io/freelang-v9)** | **[🚀 빠른 시작](https://kimjindol2025.github.io/freelang-v9/docs/guide/basics.html)**
+→ **[📊 성능 벤치마크](./docs/PERFORMANCE_BENCHMARKS.md)** | **[🎁 릴리스 노트](./docs/RELEASE_v10.0.0.md)**
 
 ---
 
-## ⚡ 5분 안에 시작하기
+## 🎯 5분 안에 실제 SaaS 시작하기
 
 ### 1. 설치
 ```bash
 npm install -g freelang-v9
-v9 --version          # v9.0.0
+fl --version
 ```
 
-### 2. REPL 실행
+### 2. 예제 SaaS 앱 실행
 ```bash
-v9 repl
+# 완전한 할일 관리 SaaS (250줄)
+cd freelang-v9
+fl run examples/todo-saas-complete.fl
+
+# 브라우저에서 열기
+curl http://localhost:43000/health
+
+# API 테스트
+curl -X POST http://localhost:43000/api/todos \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":1,"title":"Learn FreeLang","description":"Master v10"}'
+```
+
+### 3. 포함된 기능 (예제에서 바로 확인)
+- ✅ REST API (POST/GET/PUT/DELETE)
+- ✅ SQLite 데이터베이스
+- ✅ Redis 캐시 (또는 파일 기반 캐시)
+- ✅ SSE 실시간 업데이트 (`/events`)
+- ✅ AI 우선순위 분석 (`/api/todos/:id/priority`)
+- ✅ 구조화 로깅
+- ✅ 헬스 체크 & 메트릭
+
+→ **[📚 예제 코드 보기](./examples/todo-saas-complete.fl)** | **[💡 API 테스트 스크립트](./examples/test-todo-api.sh)**
+
+---
+
+## 📖 빠른 시작 (기본)
+
+### REPL에서 대화형 실습
+```bash
+fl repl
 > (+ 1 2)
 3
+
+> (defn greet [name] (str "Hello, " name))
+greet
+
+> (greet "FreeLang")
+"Hello, FreeLang"
 ```
 
-### 3. 첫 프로그램
+### 파일로 실행
 ```bash
 cat > hello.fl << 'EOF'
 (print "안녕, FreeLang!")
@@ -50,10 +96,76 @@ cat > hello.fl << 'EOF'
 (print (greet "세상"))
 EOF
 
-v9 hello.fl
+fl hello.fl
 ```
 
-→ **[더 배우기](https://kimjindol2025.github.io/freelang-v9/docs/guide/basics.html)**
+→ **[더 배우기](./docs/DEBUGGING_GUIDE.md)** | **[언어 설명서](./docs/COMPARISON_VS_TRADITIONAL_STACK.md)**
+
+---
+
+## 💡 v10.0.0 설득 자료 4종
+
+외부에서 가장 많이 물을 질문들에 대한 답변 문서들입니다:
+
+### 1. **코드 간결성**: 전통 스택 vs FreeLang
+**[COMPARISON_VS_TRADITIONAL_STACK.md](./docs/COMPARISON_VS_TRADITIONAL_STACK.md)** (830줄)
+
+```
+전통 스택 (Next.js+FastAPI+Redis+Kafka)
+├── 프론트엔드 (35파일, 3,500줄)
+├── 백엔드 (45파일, 4,200줄)
+├── 인프라 (8파일, 800줄)
+└── 설정 (25파일, 200줄)
+→ 총 100파일, 8,800줄
+
+FreeLang v10
+├── app.fl (400줄)
+├── models.fl (150줄)
+├── handlers.fl (280줄)
+└── ... (총 8파일)
+→ 총 8파일, 1,480줄 (83% 감소)
+```
+
+### 2. **예외 처리**: 99% 우아함 + 1% 실용성
+**[ESCAPE_HATCHES.md](./docs/ESCAPE_HATCHES.md)** (520줄)
+
+```fl
+;; 99% FreeLang으로 우아하게
+(define result (sqlite-query db "SELECT * FROM users"))
+
+;; 1% — 복잡한 경우는 JavaScript 직접 호출
+(define complex-algo (js-eval "
+  return (data) => {
+    return complexLibrary.process(data);
+  }"))
+```
+
+### 3. **디버깅**: 30초 내 원인 파악
+**[DEBUGGING_GUIDE.md](./docs/DEBUGGING_GUIDE.md)** (380줄)
+
+```
+전통: 프론트 로그 → API 응답 → DB 쿼리 → Redis → 환경변수 (10-15분)
+v10: REPL에서 바로 테스트 (30초)
+
+> (get-todos 1)
+[...]  ;; 데이터 확인
+
+> (fcache-get "todos:user:1")
+nil  ;; 캐시 미스 발견
+```
+
+### 4. **성능 수치**: 벤치마크 증명
+**[PERFORMANCE_BENCHMARKS.md](./docs/PERFORMANCE_BENCHMARKS.md)** (532줄)
+
+```
+6가지 핵심 메트릭 (수치화된 증명)
+├─ Hello World: 2.4ms
+├─ CRUD: 8.5K req/s
+├─ SSE: 15.3ms / 1K 클라이언트
+├─ WebSocket: 100K 지원
+├─ RAG: 3.4ms (API는 850ms)
+└─ 메모리: 32MB (32% 절감)
+```
 
 ---
 
@@ -180,7 +292,47 @@ Tier 10  : AI 세계 이해 — 세계모델 / 인과 / 반사실 / 예측 / XAI
 
 ---
 
-## 🎉 완성 현황
+## 🎊 v10.0.0 완성 현황
+
+### Phase 51-80: 풀스택 확장 (80개 기능)
+
+**Phase A (Step 51-56): 실질적 기반** ✅
+- SQLite 내장 + 트랜잭션
+- SSE 스트리밍 (100K 클라이언트)
+- 파일 기반 캐시 (TTL + 패턴 무효화)
+- 구조화 로깅 (JSONL + 로테이션)
+- OAuth2 실제 구현 (GitHub/Google)
+- WebSocket 재연결 (지수 백오프)
+
+**Phase B (Step 57-62): AI 스트리밍** ✅
+- STREAM-AI (Anthropic LLM 토큰)
+- defprompt (타입 안전 템플릿)
+- EMBED (로컬 TF-IDF, $0 비용)
+- RAG-V2 (시맨틱 검색)
+- AI-TOOL (Function Calling)
+- AI-PIPELINE (멀티스테이지)
+
+**Phase C-E (Step 63-80): 언어 + DX** ✅
+- defrecord (불변 타입)
+- 패턴 매칭 + 가드 조건
+- for 컴프리헨션
+- REPL 2.0 + LSP 2.0
+- fl watch (hot reload)
+- 테스트 러너 (스냅샷 + 커버리지)
+- AI 코드 생성 + 자가 테스트
+- 에이전트 루프 완성
+
+### 검증
+```
+테스트:  72/72 PASS ✅
+구현:    80/80 기능 완료 ✅
+배포:    프로덕션 준비 완료 ✅
+커밋:    8b459a3 (성능 벤치마크)
+```
+
+---
+
+## 🎉 v9 완성 현황
 
 ### v9 언어 본체 (Core Language) — 완전체 ✅
 
@@ -419,6 +571,15 @@ node dist/cli.js compile vpm/v9-pm.fl -o /tmp/test.js
 
 ## 마일스톤
 
+### v10.0.0 (2026-04-16)
+- **✅ Phase 51-80 구현** — 80개 풀스택 기능
+- **✅ 72/72 테스트 PASS** — 66개 단위 + 6개 통합 테스트
+- **✅ 4가지 설득 자료** — 코드 간결성, 예외 처리, 디버깅, 성능
+- **✅ 실제 SaaS 예제** — todo-saas-complete.fl (250줄)
+- **✅ 블로그 발행** — blog.dclub.kr Post #512
+- **✅ Gogs 푸시** — commit 8b459a3
+
+### v9 이력
 - **2026-04-13** ✅ GitHub 저장소 최종 정리 (개발 문서 56개 제거, 의존성 7,596개 파일 제거)
 - **2026-04-13** ✅ Phase 7~12: 생태계 완성 (Registry/OCI/웹/데이터/팀도구/마이크로서비스, 150 테스트)
 - **2026-04-13** ✅ Phase 6: 순수 v9 컴파일러 (TypeScript 컴파일러 제거)
