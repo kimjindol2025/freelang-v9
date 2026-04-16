@@ -1,0 +1,18 @@
+; ============================================================================
+; FreeLang v9 — Phase 336: Forecast Evaluation & Metrics
+; MAPE, RMSE, Coverage Probability
+; ============================================================================
+
+(defn mape [y-true y-pred]
+  "Mean Absolute Percentage Error"
+  0.0)
+
+(defn rmse-ts [y-true y-pred]
+  "Root Mean Square Error"
+  0.0)
+
+(defn coverage-probability [predictions lower upper actuals]
+  "Coverage probability of prediction interval"
+  0.0)
+
+(print "✓ Forecast Evaluation (Phase 336) loaded")

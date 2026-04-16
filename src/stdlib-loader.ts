@@ -44,6 +44,10 @@ import { createWaitModule } from "./stdlib-wait";           // Phase 1 Step 4: W
 import { createPhase1CompletionModule } from "./stdlib-phase1-completion"; // Phase 1 Step 5-8
 import { createPhase2FrameworkModule } from "./stdlib-phase2-framework"; // Phase 2 Step 9-20
 import { createPhase3to5Module } from "./stdlib-phase3-5-complete"; // Phase 3-5 Step 21-50
+import { createSqliteModule } from "./stdlib-sqlite";       // Step 51: SQLite DB
+import { createSseModule } from "./stdlib-sse";             // Step 52: SSE 스트리밍
+import { createFileCacheModule } from "./stdlib-file-cache"; // Step 53: 파일 캐시
+import { createStructuredLogModule } from "./stdlib-structured-log"; // Step 54: 구조화 로깅
 
 // Minimal Interpreter interface (순환 import 방지)
 interface InterpreterLike {
@@ -125,4 +129,8 @@ export function loadAllStdlib(interp: InterpreterLike): void {
   interp.registerModule(createPhase3to5Module(      // Phase 3-5 Step 21-50: db-*, redis-*, kafka-*, k8s-*, aws-*, gcp-*, etc
     (n: string, a: any[]) => interp.callUserFunction(n, a)
   ));
+  interp.registerModule(createSqliteModule());      // Step 51: SQLite
+  interp.registerModule(createSseModule());         // Step 52: SSE
+  interp.registerModule(createFileCacheModule());   // Step 53: 파일 캐시
+  interp.registerModule(createStructuredLogModule()); // Step 54: 구조화 로깅
 }
