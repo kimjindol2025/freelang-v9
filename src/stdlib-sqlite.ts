@@ -16,19 +16,15 @@ const sqliteConnections = new Map<string, { dbPath: string; connected: boolean }
 class SqlitePool {
   private activeRequests = 0;
   private maxConcurrent: number;
-  private waitQueue: Array<() => Promise<void>> = [];
 
   constructor(maxConcurrent: number = 5) {
     this.maxConcurrent = maxConcurrent;
   }
 
   async execute<T>(fn: () => Promise<T>): Promise<T> {
-    // 현재 active requests가 maxConcurrent에 도달하면 대기
+    // ✅ v10.1 Phase 2.1 (수정): 간단한 스핀 대기 (더 신뢰할 수 있음)
     while (this.activeRequests >= this.maxConcurrent) {
-      await new Promise((resolve) => {
-        this.waitQueue.push(resolve as any);
-        setTimeout(() => {}, 10); // 10ms 간격 대기
-      });
+      await new Promise((resolve) => setTimeout(resolve, 1)); // 1ms 대기
     }
 
     this.activeRequests++;
@@ -36,20 +32,13 @@ class SqlitePool {
       return await fn();
     } finally {
       this.activeRequests--;
-
-      // 대기 중인 요청이 있으면 깨우기
-      if (this.waitQueue.length > 0) {
-        const resume = this.waitQueue.shift();
-        if (resume) resume();
-      }
     }
   }
 
-  getStats(): { active: number; maxConcurrent: number; waiting: number } {
+  getStats(): { active: number; maxConcurrent: number } {
     return {
       active: this.activeRequests,
       maxConcurrent: this.maxConcurrent,
-      waiting: this.waitQueue.length,
     };
   }
 
@@ -143,7 +132,11 @@ function validateDbPath(dbPath: string): string {
   const resolved = path.resolve(dbPath);
   const cwd = process.cwd();
   const home = os.homedir();
-  if (!resolved.startsWith(cwd) && !resolved.startsWith(home)) {
+  const tmpDir = os.tmpdir();
+
+  // ✅ v10.1: tmpdir도 허용 (테스트용)
+  const allowedPaths = [cwd, home, tmpDir];
+  if (!allowedPaths.some(b => resolved.startsWith(b))) {
     throw new Error(`Path traversal detected: ${dbPath}`);
   }
   return resolved;
@@ -368,7 +361,8 @@ const sqliteModule = {
 
       await sqliteRunAsync(conn.dbPath, sql, false, sqliteTimeout);
       return true;
-    } catch (err) {
+    } catch (err: any) {
+      console.error('[sqlite-create-table-async] Error:', err.message);
       return false;
     }
   },

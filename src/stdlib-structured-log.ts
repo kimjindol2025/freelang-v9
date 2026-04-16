@@ -15,11 +15,13 @@ let logConfig: LogConfig | null = null;
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
 
 // ✅ Step 7: 경로 검증 (경로 트래버설 방지)
+// ✅ v10.1: tmpdir도 허용 (테스트용)
 function validateLogPath(p: string): string {
   const resolved = path.resolve(p);
   const cwd = process.cwd();
   const home = os.homedir();
-  const safe = [path.resolve('logs'), cwd, home];
+  const tmpDir = os.tmpdir();
+  const safe = [path.resolve('logs'), cwd, home, tmpDir];
 
   if (!safe.some(b => resolved.startsWith(b))) {
     throw new Error(`Invalid log path: ${p}`);

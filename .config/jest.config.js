@@ -10,8 +10,8 @@ module.exports = {
       tsconfig: path.join(__dirname, 'tsconfig.json'),
     }
   },
-  roots: ['<rootDir>/src'],
-  testMatch: ['<rootDir>/**/__tests__/**/*.test.ts'],
+  roots: ['<rootDir>/src', '<rootDir>/tests'],
+  testMatch: ['<rootDir>/**/__tests__/**/*.test.ts', '<rootDir>/tests/**/*.test.ts'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   collectCoverage: true,
   collectCoverageFrom: [
