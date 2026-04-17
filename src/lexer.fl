@@ -1,0 +1,252 @@
+; FreeLang v9 Lexer — S-Expression Tokenizer
+; Phase 1: Self-Hosting Lexer Implementation
+; Written in v9 language (self-referential)
+
+(define KEYWORDS (object
+  "MODULE" "Module"
+  "TYPECLASS" "TypeClass"
+  "INSTANCE" "Instance"
+  "import" "Import"
+  "open" "Open"
+  "search" "Search"
+  "fetch" "Fetch"
+  "learn" "Learn"
+  "recall" "Recall"
+  "remember" "Remember"
+  "forget" "Forget"
+  "observe" "Observe"
+  "analyze" "Analyze"
+  "decide" "Decide"
+  "act" "Act"
+  "verify" "Verify"
+  "if" "If"
+  "when" "When"
+  "then" "Then"
+  "else" "Else"
+  "repeat" "Repeat"
+  "until" "Until"
+  "while" "While"))
+
+; Helper: Is character whitespace?
+(define (is-whitespace ch)
+  (or (= ch " ") (= ch "\n") (= ch "\t") (= ch "\r")))
+
+; Helper: Is character digit?
+(define (is-digit ch)
+  (and (>= (char-code ch) 48) (<= (char-code ch) 57)))
+
+; Helper: Is character start of symbol?
+(define (is-symbol-start ch)
+  (let ((code (char-code ch)))
+    (or (and (>= code 97) (<= code 122))   ; a-z
+        (and (>= code 65) (<= code 90))    ; A-Z
+        (= ch "_") (= ch "<") (= ch ">")
+        (= ch "=") (= ch "!") (= ch "+")
+        (= ch "-") (= ch "*") (= ch "&")
+        (= ch "/") (= ch "%"))))
+
+; Helper: Is character symbol char?
+(define (is-symbol-char ch)
+  (or (is-symbol-start ch)
+      (is-digit ch)
+      (= ch "-") (= ch "?") (= ch "&")
+      (= ch "/") (= ch ".")))
+
+; Helper: Get keyword type or null
+(define (get-keyword-token-type text)
+  (object-get KEYWORDS text))
+
+; Main lexer function
+(define (lex source)
+  (let ((tokens (array))
+        (i 0)
+        (line 1)
+        (col 1)
+        (len (strlen source)))
+
+    (while (< i len)
+      (let ((ch (char-at source i)))
+
+        ; Whitespace
+        (if (is-whitespace ch)
+          (do
+            (if (= ch "\n")
+              (do
+                (set! line (+ line 1))
+                (set! col 1))
+              (set! col (+ col 1)))
+            (set! i (+ i 1)))
+
+          ; Comment: ; to end of line
+          (if (= ch ";")
+            (do
+              (while (and (< i len) (not (= (char-at source i) "\n")))
+                (set! i (+ i 1)))
+              (when (< i len)
+                (set! line (+ line 1))
+                (set! col 1)
+                (set! i (+ i 1))))
+
+            ; String: "..."
+            (if (= ch "\"")
+              (let ((start-col col)
+                    (value (array)))
+                (set! i (+ i 1))
+                (set! col (+ col 1))
+
+                (while (and (< i len) (not (= (char-at source i) "\"")))
+                  (let ((c (char-at source i)))
+                    (if (= c "\\")
+                      (do
+                        (set! i (+ i 1))
+                        (set! col (+ col 1))
+                        (when (< i len)
+                          (let ((esc (char-at source i)))
+                            (cond
+                              ((= esc "n") (push value "\n"))
+                              ((= esc "t") (push value "\t"))
+                              ((= esc "r") (push value "\r"))
+                              ((= esc "\\") (push value "\\"))
+                              ((= esc "\"") (push value "\""))
+                              (else (push value esc))))
+                          (set! i (+ i 1))
+                          (set! col (+ col 1))))
+                      (do
+                        (if (= c "\n")
+                          (do
+                            (set! line (+ line 1))
+                            (set! col 1))
+                          (set! col (+ col 1)))
+                        (push value c)
+                        (set! i (+ i 1))))))
+
+                (when (< i len)
+                  (set! i (+ i 1))
+                  (set! col (+ col 1)))
+
+                (push tokens (object
+                  "type" "String"
+                  "value" (str value)
+                  "line" line
+                  "col" start-col)))
+
+              ; Brackets and Parens
+              (if (= ch "[")
+                (do
+                  (push tokens (object "type" "LBracket" "value" "[" "line" line "col" col))
+                  (set! i (+ i 1))
+                  (set! col (+ col 1)))
+
+                (if (= ch "]")
+                  (do
+                    (push tokens (object "type" "RBracket" "value" "]" "line" line "col" col))
+                    (set! i (+ i 1))
+                    (set! col (+ col 1)))
+
+                  (if (= ch "(")
+                    (do
+                      (push tokens (object "type" "LParen" "value" "(" "line" line "col" col))
+                      (set! i (+ i 1))
+                      (set! col (+ col 1)))
+
+                    (if (= ch ")")
+                      (do
+                        (push tokens (object "type" "RParen" "value" ")" "line" line "col" col))
+                        (set! i (+ i 1))
+                        (set! col (+ col 1)))
+
+                      (if (= ch "{")
+                        (do
+                          (push tokens (object "type" "LBrace" "value" "{" "line" line "col" col))
+                          (set! i (+ i 1))
+                          (set! col (+ col 1)))
+
+                        (if (= ch "}")
+                          (do
+                            (push tokens (object "type" "RBrace" "value" "}" "line" line "col" col))
+                            (set! i (+ i 1))
+                            (set! col (+ col 1)))
+
+                          ; Pipe and other symbols
+                          (if (= ch "|")
+                            (let ((start-col col))
+                              (if (and (< (+ i 1) len) (= (char-at source (+ i 1)) ">"))
+                                (do
+                                  (push tokens (object "type" "Symbol" "value" "|>" "line" line "col" start-col))
+                                  (set! i (+ i 2))
+                                  (set! col (+ col 2)))
+                                (do
+                                  (push tokens (object "type" "Symbol" "value" "|" "line" line "col" start-col))
+                                  (set! i (+ i 1))
+                                  (set! col (+ col 1)))))
+
+                            ; Colon
+                            (if (= ch ":")
+                              (do
+                                (push tokens (object "type" "Colon" "value" ":" "line" line "col" col))
+                                (set! i (+ i 1))
+                                (set! col (+ col 1)))
+
+                              ; Variable: $varname
+                              (if (= ch "$")
+                                (let ((start-col col)
+                                      (varname (array)))
+                                  (set! i (+ i 1))
+                                  (set! col (+ col 1))
+
+                                  (while (and (< i len)
+                                              (let ((c (char-at source i)))
+                                                (or (is-symbol-char c)
+                                                    (is-digit c))))
+                                    (push varname (char-at source i))
+                                    (set! i (+ i 1))
+                                    (set! col (+ col 1)))
+
+                                  (push tokens (object
+                                    "type" "Variable"
+                                    "value" (str varname)
+                                    "line" line
+                                    "col" start-col)))
+
+                                ; Number
+                                (if (is-digit ch)
+                                  (let ((start i)
+                                        (start-col col))
+                                    (while (and (< i len)
+                                                (let ((c (char-at source i)))
+                                                  (or (is-digit c) (= c "."))))
+                                      (set! i (+ i 1))
+                                      (set! col (+ col 1)))
+
+                                    (push tokens (object
+                                      "type" "Number"
+                                      "value" (substring source start i)
+                                      "line" line
+                                      "col" start-col)))
+
+                                  ; Symbol
+                                  (if (is-symbol-start ch)
+                                    (let ((start i)
+                                          (start-col col))
+                                      (while (and (< i len) (is-symbol-char (char-at source i)))
+                                        (set! i (+ i 1))
+                                        (set! col (+ col 1)))
+
+                                      (let ((value (substring source start i))
+                                            (kw-type (get-keyword-token-type value))
+                                            (token-type (if kw-type kw-type "Symbol")))
+                                        (push tokens (object
+                                          "type" token-type
+                                          "value" value
+                                          "line" line
+                                          "col" start-col))))
+
+                                    ; Unexpected character
+                                    (throw (string "Unexpected character '" ch "' at line " line " col " col)))))))))))))))))))))))
+
+    ; EOF token
+    (push tokens (object "type" "EOF" "value" "" "line" line "col" col))
+    tokens))
+
+; Export
+(export lex)

@@ -1,0 +1,24 @@
+; FreeLang v9 Lexer — Minimal Version
+; Phase 1 (Simplified): Self-Hosting Lexer
+; Tests that v9 can define and call a function
+
+; Define a simple function that tokenizes
+(define lex (fn (source)
+  (let ((tokens (array))
+        (i 0)
+        (len (strlen source)))
+
+    ; Simple loop: skip to EOF
+    (while (< i len)
+      (let ((ch (char-at source i)))
+
+        ; Just push a token for each character
+        (push tokens (object "char" ch "i" i))
+
+        (set! i (+ i 1))))
+
+    ; Return tokens
+    tokens)))
+
+; Test: call the function
+(lex "hello")

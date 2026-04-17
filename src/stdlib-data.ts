@@ -111,6 +111,33 @@ export function createDataModule() {
       return clone;
     },
 
+    // ── Object Construction ────────────────────────────────────
+
+    // object ...keyValues -> object (create object from alternating key-value arguments)
+    // Example: (object "id" "apt-001" "status" "pending") → {"id": "apt-001", "status": "pending"}
+    "object": (...keyValues: any[]): Record<string, any> => {
+      const result: Record<string, any> = {};
+      for (let i = 0; i < keyValues.length - 1; i += 2) {
+        const key = String(keyValues[i]);
+        result[key] = keyValues[i + 1];
+      }
+      return result;
+    },
+
+    // object-get obj key -> any (get value from object)
+    "object-get": (obj: any, key: string): any => {
+      if (obj === null || obj === undefined) return null;
+      return obj[key] ?? null;
+    },
+
+    // object-set obj key value -> object (immutable update)
+    "object-set": (obj: any, key: string, value: any): Record<string, any> => {
+      if (obj === null || obj === undefined) obj = {};
+      const clone = { ...obj };
+      clone[key] = value;
+      return clone;
+    },
+
     // ── CSV ───────────────────────────────────────────────────
 
     // csv_parse str -> [[string]] (parse CSV string to rows)

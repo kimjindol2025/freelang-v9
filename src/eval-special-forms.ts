@@ -22,19 +22,43 @@ export function evalSpecialForm(interp: Interpreter, op: string, expr: SExpr): a
   const callFn = (fn: any, a: any[]) => (interp as any).callFunction(fn, a);
   const ctx = interp.context;
 
-  // ── fn ───────────────────────────────────────────────────────────
-  if (op === "fn") {
-    if (expr.args.length < 2) throw new Error(`fn requires at least 2 arguments (params and body)`);
+  // ── fn / lambda ───────────────────────────────────────────────────────────
+  if (op === "fn" || op === "lambda") {
+    if (expr.args.length < 2) throw new Error(`${op} requires at least 2 arguments (params and body)`);
     const paramsNode = expr.args[0];
     const params: string[] = [];
-    if ((paramsNode as any).kind === "block" && (paramsNode as any).type === "Array") {
+
+    // 파라미터 추출: (req), (req x y), [req], (list req) 등 다양한 형태 지원
+    if ((paramsNode as any).kind === "sexpr") {
+      // (req) 형태 → S-expression으로 파싱됨
+      // op가 파라미터 이름, args는 추가 파라미터들 (또는 빈 배열)
+      const sexprNode = paramsNode as any;
+      // op가 파라미터 이름
+      if (typeof sexprNode.op === "string" && sexprNode.op !== "do") {
+        params.push(sexprNode.op);
+      }
+      // args에 추가 파라미터들이 있을 수 있음
+      if (sexprNode.args && Array.isArray(sexprNode.args)) {
+        for (const arg of sexprNode.args) {
+          if (arg.kind === "variable") {
+            params.push((arg as Variable).name);
+          } else if (typeof arg === "string") {
+            params.push(arg);
+          }
+        }
+      }
+    } else if ((paramsNode as any).kind === "block" && (paramsNode as any).type === "Array") {
       const items = (paramsNode as any).fields.get("items");
       if (Array.isArray(items)) {
         for (const item of items) {
           if ((item as any).kind === "variable") params.push((item as Variable).name);
         }
       }
+    } else if ((paramsNode as any).kind === "variable") {
+      // 단일 파라미터인 경우 (e.g., (lambda x body))
+      params.push((paramsNode as Variable).name);
     }
+
     const body = expr.args.length === 2
       ? expr.args[1]
       : { kind: "sexpr" as const, op: "do", args: expr.args.slice(1) };

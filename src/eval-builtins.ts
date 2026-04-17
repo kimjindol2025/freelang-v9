@@ -561,21 +561,23 @@ export function evalBuiltin(interp: Interpreter, op: string, args: any[], expr: 
       }
     }
 
-    case "fn": {
+    case "fn":
+    case "lambda": {
+      // fn과 lambda는 동일하게 작동 (lambda는 fn의 별칭)
       // This case shouldn't normally reach here (handled earlier), but keep as fallback
       let params: string[] = [];
       const paramNode = expr.args[0];
       if (paramNode && typeof paramNode === "object" && "kind" in paramNode && paramNode.kind === "literal" && Array.isArray((paramNode as any).value)) {
         params = ((paramNode as any).value as any[]).map((p: any) => {
           if (p && typeof p === "object" && "kind" in p && p.kind === "variable") return (p as any).name;
-          throw new Error(`fn parameter must be a variable`);
+          throw new Error(`fn/lambda parameter must be a variable`);
         });
       } else if (paramNode && typeof paramNode === "object" && "kind" in paramNode && paramNode.kind === "variable") {
         params = [(paramNode as any).name];
       } else if (Array.isArray(paramNode)) {
         params = (paramNode as any[]).map((p: any) => (typeof p === "string" ? p : String(p)));
       } else {
-        throw new Error(`fn expects parameter array`);
+        throw new Error(`fn/lambda expects parameter array`);
       }
       return {
         kind: "function-value",

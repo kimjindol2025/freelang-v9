@@ -1,0 +1,122 @@
+; FreeLang v9 Lexer — Simplified Version
+; Phase 1: Self-Hosting Lexer (Simple approach)
+
+(define $keywords (object
+  "MODULE" "Module"
+  "import" "Import"
+  "if" "If"
+  "then" "Then"
+  "else" "Else"))
+
+(define (is-whitespace ch)
+  (or (= ch " ") (= ch "\n") (= ch "\t")))
+
+(define (is-digit ch)
+  (let ((code (char-code ch)))
+    (and (>= code 48) (<= code 57))))
+
+(define (is-alpha ch)
+  (let ((code (char-code ch)))
+    (or (and (>= code 97) (<= code 122))
+        (and (>= code 65) (<= code 90)))))
+
+(define (lex source)
+  (let ((tokens (array))
+        (i 0)
+        (line 1)
+        (col 1)
+        (len (strlen source)))
+
+    ; Main loop
+    (while (< i len)
+      (let ((ch (char-at source i)))
+
+        ; Skip whitespace
+        (cond
+          ((is-whitespace ch)
+           (if (= ch "\n")
+             (do (set! line (+ line 1)) (set! col 1))
+             (set! col (+ col 1)))
+           (set! i (+ i 1)))
+
+          ; Comment
+          ((= ch ";")
+           (while (and (< i len) (not (= (char-at source i) "\n")))
+             (set! i (+ i 1)))
+           (when (< i len)
+             (set! line (+ line 1))
+             (set! col 1)
+             (set! i (+ i 1))))
+
+          ; String
+          ((= ch "\"")
+           (let ((start-col col) (value ""))
+             (set! i (+ i 1))
+             (set! col (+ col 1))
+             (while (and (< i len) (not (= (char-at source i) "\"")))
+               (set! value (string value (char-at source i)))
+               (set! i (+ i 1))
+               (set! col (+ col 1)))
+             (when (< i len)
+               (set! i (+ i 1))
+               (set! col (+ col 1)))
+             (push tokens (object "type" "String" "value" value "line" line "col" start-col))))
+
+          ; Number
+          ((is-digit ch)
+           (let ((start i) (start-col col))
+             (while (and (< i len) (is-digit (char-at source i)))
+               (set! i (+ i 1))
+               (set! col (+ col 1)))
+             (push tokens (object
+               "type" "Number"
+               "value" (substring source start i)
+               "line" line
+               "col" start-col))))
+
+          ; Symbol/Keyword
+          ((is-alpha ch)
+           (let ((start i) (start-col col))
+             (while (and (< i len)
+                        (let ((c (char-at source i)))
+                          (or (is-alpha c) (is-digit c) (= c "-"))))
+               (set! i (+ i 1))
+               (set! col (+ col 1)))
+             (let ((value (substring source start i))
+                   (kw (object-get $keywords value)))
+               (push tokens (object
+                 "type" (if kw kw "Symbol")
+                 "value" value
+                 "line" line
+                 "col" start-col)))))
+
+          ; Parentheses and brackets
+          ((= ch "(")
+           (push tokens (object "type" "LParen" "value" "(" "line" line "col" col))
+           (set! i (+ i 1))
+           (set! col (+ col 1)))
+
+          ((= ch ")")
+           (push tokens (object "type" "RParen" "value" ")" "line" line "col" col))
+           (set! i (+ i 1))
+           (set! col (+ col 1)))
+
+          ((= ch "[")
+           (push tokens (object "type" "LBracket" "value" "[" "line" line "col" col))
+           (set! i (+ i 1))
+           (set! col (+ col 1)))
+
+          ((= ch "]")
+           (push tokens (object "type" "RBracket" "value" "]" "line" line "col" col))
+           (set! i (+ i 1))
+           (set! col (+ col 1)))
+
+          (else
+           (set! i (+ i 1))
+           (set! col (+ col 1))))))
+
+    ; EOF token
+    (push tokens (object "type" "EOF" "value" "" "line" line "col" col))
+    tokens))
+
+(export lex)

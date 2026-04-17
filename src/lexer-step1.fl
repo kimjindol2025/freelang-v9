@@ -1,0 +1,8 @@
+; Phase 1, Step 1: 가장 기본적인 lexer
+; 목표: 문자 하나씩 읽고 token 배열 만들기
+
+(define lex-step1 (fn (source)
+  []))
+
+; 테스트
+(lex-step1 "hello")

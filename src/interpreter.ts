@@ -727,7 +727,7 @@ export class Interpreter {
 
     // Phase 57: Dispatch to specialized modules
     const AI_OPS = new Set(["search","fetch","learn","recall","remember","forget","observe","analyze","decide","act","verify","await"]);
-    const SPECIAL_OPS = new Set(["fn","async","set!","define","func-ref","call","compose","pipe","->","->>","|>","let","set","if","cond","do","begin","progn","loop","recur","while","and","or","defmacro","macroexpand","defstruct","defprotocol","impl","parallel","race","with-timeout","fl-try"]);
+    const SPECIAL_OPS = new Set(["fn","lambda","async","set!","define","func-ref","call","compose","pipe","->","->>","|>","let","set","if","cond","do","begin","progn","loop","recur","while","and","or","defmacro","macroexpand","defstruct","defprotocol","impl","parallel","race","with-timeout","fl-try"]);
 
     if (AI_OPS.has(op)) return evalAiBlock(this, op, expr);
     if (SPECIAL_OPS.has(op)) return evalSpecialForm(this, op, expr);
