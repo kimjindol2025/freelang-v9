@@ -63,7 +63,7 @@ function propagateMutations(
   }
 }
 
-const MAX_CALL_DEPTH = 5000; // Phase 61: 상향 (trampoline이 처리하므로 안전망 역할)
+const MAX_CALL_DEPTH = 2000000; // Phase 2 Self-Hosting: FL 메타 인터프리터용 상향 (trampoline이 처리하므로 안전망 역할)
 
 export function callUserFunction(interp: InterpreterLike, name: string, args: any[]): any {
   let baseName = name;
