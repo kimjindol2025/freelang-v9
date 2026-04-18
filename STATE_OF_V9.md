@@ -70,24 +70,29 @@
 
 ---
 
-## Self-Hosting 로드맵
+## Self-Hosting 로드맵 (2026-04-19 진행 상황)
 
-### Phase 1: 파서 v9화 (예상 2-3주)
-- [ ] v9로 렉서 재구현
-- [ ] v9로 파서 재구현
-- [ ] 테스트 통과
+### Phase 1: 렉서/파서 v9화 ✅ **완성** (2026-04-19)
+- ✅ v9로 렉서 재구현 (freelang-lexer.fl)
+- ✅ v9로 파서 재구현 (freelang-parser.fl)
+- ✅ 테스트 통과: 10/10 (lexer), 10/10 (parser)
+- **진행률**: 100%
 
-### Phase 2: 평가기 완성 (예상 3-4주)
-- [ ] eval.fl 완성
-- [ ] 모든 builtin 함수 v9로 구현
-- [ ] 22/22 테스트 PASS
+### Phase 2: 평가기 완성 ⚠️ **진행 중** (9/10)
+- ✅ 평가기 핵심 v9로 구현 (freelang-interpreter.fl)
+- ✅ 환경 관리: env-new, env-lookup, env-bind (v9)
+- ✅ 클로저: make-closure, closure? (v9)
+- ✅ let/if/배열/연산: 모두 v9로 평가 가능
+- ⚠️ FUNC 정의+호출: 1개 케이스 미해결 (TypeScript 경계 문제)
+- **진행률**: 90% (9/10 PASS)
+- **테스트**: selfhosting-interpreter.test.ts 9/10 PASS
 
-### Phase 3: 인터프리터 v9화 (예상 4-6주)
+### Phase 3: 인터프리터 v9화 (예상)
 - [ ] 핵심 인터프리터를 v9로 재구현
 - [ ] 특수 폼 처리를 v9로 구현
 - [ ] 부트스트랩 메커니즘 구현
 
-### Phase 4: 부트스트랩 검증 (예상 1-2주)
+### Phase 4: 부트스트랩 검증 (예상)
 - [ ] v9만으로 v9 실행 가능 확인
 - [ ] 모든 테스트 PASS
 - [ ] **공식 선언: "v9 Self-Hosting 완성"**
