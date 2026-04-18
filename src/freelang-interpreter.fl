@@ -21,10 +21,34 @@
   )
 ]
 
-; 네이티브 builtin으로 env 조회 (재귀 스택오버플로우 방지)
+; Phase B: env-lookup v9 구현 (fl-env-get 제거)
+; env의 vars 배열을 선형 탐색
+[FUNC env-vars-find :params [$vars $name $i]
+  :body (
+    (if (>= $i (length $vars))
+      null
+      (let [[$pair (get $vars $i)]]
+        (if (= (get $pair 0) $name)
+          (get $pair 1)
+          (env-vars-find $vars $name (+ $i 1))
+        )
+      )
+    )
+  )
+]
+
+; env 체인을 순회하며 name 탐색 (fl-env-get 대체)
 [FUNC env-lookup :params [$env $name]
   :body (
-    (fl-env-get $env $name)
+    (if (null? $env)
+      null
+      (let [[$found (env-vars-find (get $env :vars) $name 0)]]
+        (if (null? $found)
+          (env-lookup (get $env :parent) $name)
+          $found
+        )
+      )
+    )
   )
 ]
 

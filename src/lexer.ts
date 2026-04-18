@@ -244,3 +244,20 @@ export function lex(source: string): Token[] {
   tokens.push({ type: T.EOF, value: "", line, col });
   return tokens;
 }
+
+/**
+ * Phase A: Lexer 클래스 래퍼
+ * tests/ 디렉토리의 v10 테스트들이 `new Lexer(code).tokenize()` 패턴을 사용하므로
+ * 기존 lex() 함수를 클래스로 감싸기 위한 래퍼
+ */
+export class Lexer {
+  private source: string;
+
+  constructor(source: string) {
+    this.source = source;
+  }
+
+  tokenize(): Token[] {
+    return lex(this.source);
+  }
+}
