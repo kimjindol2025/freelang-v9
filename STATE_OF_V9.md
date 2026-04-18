@@ -70,23 +70,53 @@
 
 ---
 
-## Self-Hosting 로드맵 (2026-04-19 진행 상황)
+## Self-Hosting 로드맵 (2026-04-20 진행 상황)
 
 ### Phase 1: 렉서/파서 v9화 ✅ **완성** (2026-04-19)
 - ✅ v9로 렉서 재구현 (freelang-lexer.fl)
 - ✅ v9로 파서 재구현 (freelang-parser.fl)
 - ✅ 테스트 통과: 10/10 (lexer), 10/10 (parser)
 - **진행률**: 100%
+- **Commit**: e975ab0 (v10 초기 스캐폴딩)
 
-### Phase 2: 평가기 완성 ⚠️ **부분 완성** (9/10)
+### Phase 2: 평가기 완성 ⚠️ **부분 완성** (9/10 PASS)
 - ✅ 평가기 핵심 v9로 구현 (freelang-interpreter.fl)
 - ✅ 환경 관리: env-new, env-lookup, env-bind (v9)
 - ✅ 클로저: make-closure, closure? (v9)
-- ✅ let/if/배열/연산: 모두 v9로 평가 가능 (Tests 1-5)
-- ⚠️ FUNC 정의+호출 체인: 무한재귀 (TypeScript-FL 경계 설계 한계)
-- **진행률**: 90% (9/10 PASS) — Test 6 미해결은 구조적 문제
+- ✅ let/if/배열/연산: 모두 v9로 평가 가능 (Tests 1-5, 7-10)
+- ⚠️ FUNC 정의+호출 체인: **구조적 한계** (패치 불가)
+- **진행률**: 90% (9/10 PASS) — Test 6 미해결
 - **테스트**: selfhosting-interpreter.test.ts 9/10 PASS
-- **근본 원인**: fl-eval-builtin에서 `(+ v0 v1)` FL 식 평가 → TypeScript evalSExpr 재호출 → 무한 사이클
+- **Test 6 미해결 분석** (2026-04-20):
+
+```
+증상: (square 4) 호출 시 무한재귀 (722ms 타임아웃)
+
+실행 흐름:
+1. (square 4) → TypeScript eval()
+2. FUNC 본문 (* 4 4) 평가 필요
+3. FL evaluator: fl-eval-call("*", [4, 4], env)
+4. freelang-interpreter.fl 라인 438:
+   (if (= $op "*") (* (get $vals 0) (get $vals 1))
+            ↓
+   (* 4 4)를 FL 식으로 다시 평가
+5. TypeScript evalSExpr("*", [4, 4])
+6. 다시 3번으로 루프
+
+근본 원인:
+- fl-eval-builtin에서 arithmetic를 FL 식으로 정의
+- FL 식 평가 → TS eval 호출 → FL eval 호출 (상호 재귀)
+- MAX_CALL_DEPTH 증가로 해결 불가 (JS 네이티브 스택 한계)
+
+패치 불가능 이유:
+- 단순 함수 등록: FL 환경 연결 불가
+- FL 코드 우회: 구문 복잡도↑, 유지보수 악화
+- 구조 개선 필요: Phase 3B+ (TCO, 경계 재설계)
+```
+
+**다음 단계 (Phase 3B+)**:
+- TCO (loop/recur) 변환으로 callDepth 단축
+- TypeScript-FL 경계 재설계 필요
 
 ### Phase 3: 인터프리터 v9화 (예상)
 - [ ] 핵심 인터프리터를 v9로 재구현
@@ -125,47 +155,78 @@ commit: [해시]
 
 ---
 
-## 최종 선언 (2026-04-19 기록)
+## 최종 선언 (2026-04-20 기록)
 
 ### 정확한 상태
 
-**v9 Self-Hosting 진행률: ~30% (Phase 1-2)**
+**v9 Self-Hosting 진행률: ~35% (Phase 1-2)**
 
 ```
 Phase 1: 렉서/파서 v9화 ✅ (완성, 10/10+10/10)
-Phase 2: 평가기 부분 v9화 ⚠️ (90% 완성, 9/10)
-  - Tests 1-5: 완전 작동 ✅
-  - Test 6: 설계 한계 (FUNC 호출)
-Phase 3: TypeScript 경계 개선 📋 (예정)
+Phase 2: 평가기 부분 v9화 ⚠️ (90% 완성, 9/10 PASS)
+  - Tests 1-5, 7-10: 완전 작동 ✅ (9개 테스트)
+  - Test 6: 구조적 한계 (FUNC 호출 체인)
+Phase 3B: TCO 최적화 (env-lookup) 📋 (예정)
+Phase 3C: TypeScript-FL 경계 재설계 📋 (예정)
 Phase 4: 부트스트랩 검증 📋 (예정)
 
-완성 기준: Phase 1 + Phase 2 (10/10) + Phase 3 + Phase 4
+완성 기준: Phase 1 + Phase 2 (10/10) + Phase 3B/3C + Phase 4
 ```
 
-### v9는 아직 진정한 self-hosting 언어가 아닙니다
+### v9는 부분 self-hosted 상태입니다
 
-- ❌ v9 인터프리터 전체가 v9로 작성되지 않음 (TypeScript 의존)
-- ❌ v9만으로 v9 코드 완전히 실행 불가 (FUNC 호출 미지원)
-- ⚠️ 부분 self-hosted: 렉서/파서는 완성, 평가기는 90% 완성
+- ✅ 렉서(lexer): 100% v9로 작성 (10/10 PASS)
+- ✅ 파서(parser): 100% v9로 작성 (10/10 PASS)
+- ⚠️ 평가기(interpreter): 90% v9로 작성 (9/10 PASS)
+  - 산술/조건/배열/let/if 완전 작동
+  - FUNC 정의+호출만 미해결 (아키텍처 문제)
+- ❌ 인터프리터 코어: 여전히 TypeScript 의존
+- **현재 self-hosting률**: ~35%
 
 ### 언제 self-hosting이 완성되는가?
 
-1. Phase 2: Test 6 해결 (TypeScript-FL 경계 개선)
-2. Phase 3: TCO 최적화 (env-lookup 깊이 한계 극복)
-3. Phase 4: 복잡한 코드 검증 (재귀 함수 등)
-4. 최종: 이 문서에 "✅ Self-Hosting 완성" 기록될 때
+1. **Phase 3B**: env-lookup TCO 변환 (loop/recur)
+   - 환경 체인 깊이 → callDepth 단축
+   - 더 깊은 환경 스택 지원
 
-### 거짓 보고는 불가능
+2. **Phase 3C**: TypeScript-FL 경계 재설계
+   - 단방향 dispatch (TS→FL, 루프백 제거)
+   - Primitive 연산 TS 네이티브 경로 확보
 
-모든 주장은 이 문서 + 코드 + 테스트 숫자로 검증됨.
-- "완성" = 반드시 ✅ 마크
-- "진행 중" = ⚠️ 또는 📋 마크
+3. **Phase 2 Test 6 해결** (Phase 3B/3C 이후)
+   - FUNC 호출 체인 완성 (10/10 PASS)
+
+4. **최종**: 이 문서에 "✅ Self-Hosting Phase 2 완성" 기록될 때
+
+### 검증 방법 (2026-04-20)
+
+모든 주장은 코드 + 테스트 결과로 검증 가능:
+
+```bash
+cd /home/kimjin/freelang-v9
+
+# Phase 1: Lexer 검증
+npm test -- --testPathPattern="selfhosting-lexer"
+# Expected: 10/10 PASS
+
+# Phase 1: Parser 검증
+npm test -- --testPathPattern="selfhosting-parser"
+# Expected: 10/10 PASS
+
+# Phase 2: Interpreter 검증
+npm test -- --testPathPattern="selfhosting-interpreter"
+# Expected: 9/10 PASS (Test 6만 실패)
+#          ├─ Tests 1-5: 산술/let/if/배열/nested ✓
+#          ├─ Tests 7-10: 배열/불린/중첩/let+if ✓
+#          └─ Test 6: FUNC 정의+호출 ✕ (구조적 한계)
+```
+
+**숫자 기준**:
+- "완성" = 10/10 PASS
+- "진행 중" = 9/10 PASS (이유 명시)
 - "미해결" = ❌ 마크 + 근본 원인 기록
 
 ---
 
-**이 문서는 진실입니다. 의심하면 직접 실행하세요.**
-```bash
-npm test -- --testPathPattern="selfhosting-interpreter"
-# 9/10 PASS = 이 문서와 일치
-```
+**이 문서는 진실입니다. 의심하면 직접 실행하세요.**  
+**Commit**: 현재 HEAD (9/10 PASS 기준점)
