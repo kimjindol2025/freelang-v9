@@ -121,7 +121,11 @@
 
 [FUNC get-param-names :params [$params-node]
   :body (
-    (extract-params (block-items $params-node) 0 [])
+    (let [[$items (if (= (get $params-node :kind) "array")
+                     (get $params-node :items)
+                     (block-items $params-node))]]
+      (extract-params $items 0 [])
+    )
   )
 ]
 
@@ -132,23 +136,36 @@
     (if (null? $node)
       null
       (let [[$k (get $node :kind)]]
-        (if (= $k "literal")
-          (get $node :value)
-          (if (= $k "variable")
+        (match $k
+          ("literal"
+            (get $node :value)
+          )
+          ("variable"
             (env-lookup $env (get $node :name))
-            (if (= $k "array")
-              (fl-eval-array (get $node :items) $env 0 [])
-              (if (= $k "sexpr")
-                (fl-eval-sexpr (get $node :op) (get $node :args) $env)
-                (if (= $k "block")
-                  (if (= (get $node :type) "Array")
-                    (fl-eval-array (block-items $node) $env 0 [])
-                    (fl-eval-block $node $env)
-                  )
-                  null
-                )
-              )
+          )
+          ("array"
+            (fl-eval-array (get $node :items) $env 0 [])
+          )
+          ("sexpr"
+            (fl-eval-sexpr (get $node :op) (get $node :args) $env)
+          )
+          ("map-literal"
+            ; {:kind "map-literal" :pairs {:k v ...}} → eval each value
+            ; For now: pairs는 이미 평가된 상태 (parser에서 리터럴만)
+            (get $node :pairs)
+          )
+          ("keyword"
+            ; {:kind "keyword" :name "type"} → ":type" 문자열 반환
+            (get $node :name)
+          )
+          ("block"
+            (if (= (get $node :type) "Array")
+              (fl-eval-array (block-items $node) $env 0 [])
+              (fl-eval-block $node $env)
             )
+          )
+          (_
+            null
           )
         )
       )
@@ -272,7 +289,7 @@
                  (env-lookup $env $fn-raw))]
           [$vals (fl-eval-args (slice $args 1 (length $args)) $env 0 [])]]
       (if (closure? $fn)
-        (fl-apply $fn $vals $env)
+        (fl-apply $fn $vals)
         null
       )
     )
@@ -321,7 +338,9 @@
     (if (>= $i (length $items))
       $env
       (let [[$pair (get $items $i)]
-            [$pair-items (block-items $pair)]
+            [$pair-items (if (= (get $pair :kind) "array")
+                           (get $pair :items)
+                           (block-items $pair))]
             [$name-node (get $pair-items 0)]
             [$val (fl-eval (get $pair-items 1) $env)]
             [$nm (if (= (get $name-node :kind) "variable")
@@ -335,7 +354,10 @@
 
 [FUNC fl-eval-let :params [$args $env]
   :body (
-    (let [[$bindings (block-items (get $args 0))]
+    (let [[$binding-node (get $args 0)]
+          [$bindings (if (= (get $binding-node :kind) "array")
+                       (get $binding-node :items)
+                       (block-items $binding-node))]
           [$new-env (fl-eval-let-bindings $bindings $env 0)]]
       (fl-eval-body (slice $args 1 (length $args)) $new-env)
     )
@@ -381,11 +403,11 @@
   )
 ]
 
-[FUNC fl-apply :params [$fn $vals $env]
+[FUNC fl-apply :params [$fn $vals]
   :body (
     (if (closure? $fn)
       (let [[$call-env (env-bind-all
-                         (env-child $env)
+                         (env-child (get $fn :closure-env))
                          (get $fn :params)
                          $vals 0)]]
         (fl-eval-body (get $fn :body) $call-env)
@@ -400,7 +422,7 @@
     (let [[$vals (fl-eval-args $args $env 0 [])]
           [$fn (env-lookup $env $op)]]
       (if (closure? $fn)
-        (fl-apply $fn $vals $env)
+        (fl-apply $fn $vals)
         (fl-eval-builtin $op $vals)
       )
     )
@@ -482,6 +504,31 @@
         (if (= (get $node :kind) "block")
           (fl-run-nodes $nodes $env (+ $i 1) $last)
           (fl-run-nodes $nodes $env (+ $i 1) (fl-eval $node $env))
+        )
+      )
+    )
+  )
+]
+
+; ── 유틸: block-items (TypeScript native 대체) ─────────────────
+;
+; TypeScript flBlockItems의 v9 구현:
+; block의 타입에 따라 items 배열 추출
+; - block.type="Array" → block.fields.items
+; - kind="array" → node.items
+; - 기타 → node 자체 또는 []
+;
+[FUNC block-items :params [$node]
+  :body (
+    (let [[$k (get $node :kind)]]
+      (if (and (= $k "block") (= (get $node :type) "Array"))
+        (get (get $node :fields) "items")
+        (if (= $k "array")
+          (get $node :items)
+          (if (null? $node)
+            []
+            $node
+          )
         )
       )
     )

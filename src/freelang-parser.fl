@@ -315,8 +315,11 @@
             nodes
             (do
               (cond
-                ; 최상위 블록 [TYPE name :key val ...]
-                [(check "LBRACKET")
+                ; 블록 vs 배열 구분: [SYMBOL ... → 블록, [숫자/문자열/... → 배열
+                ; lookahead: LBRACKET 다음 토큰이 SYMBOL이면 블록
+                [(and (check "LBRACKET")
+                      (< (+ pos 1) len)
+                      (= (get (get $tokens (+ pos 1)) :type) "SYMBOL"))
                   (set! nodes (append nodes [(parse-block)]))
                 ]
                 ; 그 외 모든 값 (S-expr, 리터럴, 변수, 맵, 배열 등)
