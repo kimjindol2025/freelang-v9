@@ -78,14 +78,15 @@
 - ✅ 테스트 통과: 10/10 (lexer), 10/10 (parser)
 - **진행률**: 100%
 
-### Phase 2: 평가기 완성 ⚠️ **진행 중** (9/10)
+### Phase 2: 평가기 완성 ⚠️ **부분 완성** (9/10)
 - ✅ 평가기 핵심 v9로 구현 (freelang-interpreter.fl)
 - ✅ 환경 관리: env-new, env-lookup, env-bind (v9)
 - ✅ 클로저: make-closure, closure? (v9)
-- ✅ let/if/배열/연산: 모두 v9로 평가 가능
-- ⚠️ FUNC 정의+호출: 1개 케이스 미해결 (TypeScript 경계 문제)
-- **진행률**: 90% (9/10 PASS)
+- ✅ let/if/배열/연산: 모두 v9로 평가 가능 (Tests 1-5)
+- ⚠️ FUNC 정의+호출 체인: 무한재귀 (TypeScript-FL 경계 설계 한계)
+- **진행률**: 90% (9/10 PASS) — Test 6 미해결은 구조적 문제
 - **테스트**: selfhosting-interpreter.test.ts 9/10 PASS
+- **근본 원인**: fl-eval-builtin에서 `(+ v0 v1)` FL 식 평가 → TypeScript evalSExpr 재호출 → 무한 사이클
 
 ### Phase 3: 인터프리터 v9화 (예상)
 - [ ] 핵심 인터프리터를 v9로 재구현
@@ -124,17 +125,47 @@ commit: [해시]
 
 ---
 
-## 최종 선언
+## 최종 선언 (2026-04-19 기록)
 
-**v9는 아직 진정한 self-hosting 언어가 아닙니다.**
+### 정확한 상태
 
-**언제 self-hosting이 완성되는가?**
-- Phase 4 완료 시점
-- 이 문서가 "✅ Self-Hosting 완성" 업데이트될 때
-- 그 전까지는 "진행 중"
+**v9 Self-Hosting 진행률: ~30% (Phase 1-2)**
 
-**거짓 보고는 구조적으로 불가능하게 만들 것입니다.**
+```
+Phase 1: 렉서/파서 v9화 ✅ (완성, 10/10+10/10)
+Phase 2: 평가기 부분 v9화 ⚠️ (90% 완성, 9/10)
+  - Tests 1-5: 완전 작동 ✅
+  - Test 6: 설계 한계 (FUNC 호출)
+Phase 3: TypeScript 경계 개선 📋 (예정)
+Phase 4: 부트스트랩 검증 📋 (예정)
+
+완성 기준: Phase 1 + Phase 2 (10/10) + Phase 3 + Phase 4
+```
+
+### v9는 아직 진정한 self-hosting 언어가 아닙니다
+
+- ❌ v9 인터프리터 전체가 v9로 작성되지 않음 (TypeScript 의존)
+- ❌ v9만으로 v9 코드 완전히 실행 불가 (FUNC 호출 미지원)
+- ⚠️ 부분 self-hosted: 렉서/파서는 완성, 평가기는 90% 완성
+
+### 언제 self-hosting이 완성되는가?
+
+1. Phase 2: Test 6 해결 (TypeScript-FL 경계 개선)
+2. Phase 3: TCO 최적화 (env-lookup 깊이 한계 극복)
+3. Phase 4: 복잡한 코드 검증 (재귀 함수 등)
+4. 최종: 이 문서에 "✅ Self-Hosting 완성" 기록될 때
+
+### 거짓 보고는 불가능
+
+모든 주장은 이 문서 + 코드 + 테스트 숫자로 검증됨.
+- "완성" = 반드시 ✅ 마크
+- "진행 중" = ⚠️ 또는 📋 마크
+- "미해결" = ❌ 마크 + 근본 원인 기록
 
 ---
 
-**이 문서는 진실입니다. 의심하면 직접 확인하세요.**
+**이 문서는 진실입니다. 의심하면 직접 실행하세요.**
+```bash
+npm test -- --testPathPattern="selfhosting-interpreter"
+# 9/10 PASS = 이 문서와 일치
+```
