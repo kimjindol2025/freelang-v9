@@ -165,7 +165,7 @@ export class Interpreter {
         }
         return result;
       },
-    });
+    } as any);
 
     // Phase 3B: Register native recur function
     this.context.functions.set("native-recur", {
@@ -175,7 +175,7 @@ export class Interpreter {
         __FL_RECUR__: true,
         __args: args,
       }),
-    });
+    } as any);
 
     // Phase 5 Week 2: Register built-in type classes and instances
     this.registerBuiltinTypeClasses();

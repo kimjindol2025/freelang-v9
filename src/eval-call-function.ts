@@ -65,6 +65,19 @@ function propagateMutations(
 
 const MAX_CALL_DEPTH = 2000000; // Phase 2 Self-Hosting: FL 메타 인터프리터용 상향 (trampoline이 처리하므로 안전망 역할)
 
+// Phase 3B-Final: callDepth 추적 (Test 6 분석용)
+let currentCallDepth = 0;
+let maxCallDepthReached = 0;
+
+export function getCallDepthStats() {
+  return { currentCallDepth, maxCallDepthReached };
+}
+
+export function resetCallDepthStats() {
+  currentCallDepth = 0;
+  maxCallDepthReached = 0;
+}
+
 export function callUserFunction(interp: InterpreterLike, name: string, args: any[]): any {
   let baseName = name;
   let typeArgs: TypeAnnotation[] | null = null;
@@ -150,6 +163,10 @@ export function callUserFunction(interp: InterpreterLike, name: string, args: an
     const savedStack = interp.context.variables.saveStack();
     const paramSet = new Set<string>(func.params);
     interp.callDepth++;
+    // Phase 3B-Final: Track max depth
+    if (interp.callDepth > maxCallDepthReached) {
+      maxCallDepthReached = interp.callDepth;
+    }
     let result: any;
     try {
       interp.context.variables.fromSnapshot(func.capturedEnv);
@@ -170,6 +187,10 @@ export function callUserFunction(interp: InterpreterLike, name: string, args: an
   // 일반 함수: 새 렉시컬 스코프
   interp.context.variables.push();
   interp.callDepth++;
+  // Phase 3B-Final: Track max depth
+  if (interp.callDepth > maxCallDepthReached) {
+    maxCallDepthReached = interp.callDepth;
+  }
   try {
     for (let i = 0; i < func.params.length; i++) {
       interp.context.variables.set(func.params[i], args[i]);
@@ -193,6 +214,10 @@ export function callFunctionValue(interp: InterpreterLike, fn: any, args: any[])
   const savedStack = interp.context.variables.saveStack();
   const paramSet = new Set<string>(fn.params);
   interp.callDepth++;
+  // Phase 3B-Final: Track max depth
+  if (interp.callDepth > maxCallDepthReached) {
+    maxCallDepthReached = interp.callDepth;
+  }
   let result: any;
   try {
     interp.context.variables.fromSnapshot(fn.capturedEnv);
