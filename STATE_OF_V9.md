@@ -134,12 +134,21 @@
   - 이유: loop/recur 패턴이 환경 조회에 호환되지 않음
   - 다음: Phase 3C (primitives 직접 계산)
 
-### Phase 3C: TypeScript-FL 경계 재설계 (예정)
-- [ ] Primitive 연산(+, -, *, /)을 TypeScript 네이티브로
-- [ ] fl-eval-builtin 우회 경로 구현
-- [ ] Test 6 해결 가능성 검증
+### Phase 3C: 경계 재설계 탐색 ⚠️ **중단** (2026-04-21)
+- ✅ env-lookup TCO 변환 시도 (실패: 호환성 문제)
+- ✅ Primitive 네이티브화 시도 (실패: TS-FL 양쪽 호출 복잡도)
+- **결론**: 아키텍처 리팩토링 필요 (단순 패치로 불가능)
+- **상태**: 구조 문제 확인됨 → Phase 3D로 분리
 
-### Phase 4: 부트스트랩 검증 (예상)
+### Phase 3D: TS-FL 단방향 경계 완전 재설계 (별도 대공사)
+- [ ] FL 메타 인터프리터 완전 재설계
+- [ ] TS → FL 단방향 dispatch (루프백 제거)
+- [ ] Primitive 연산 경로 정리
+- **예상 비용**: 높음 (1~2 주)
+- **성공률**: 80~90%
+- **기준점**: Phase 3C 탐색 결과 기록 (commit b373234)
+
+### Phase 4: 부트스트랩 검증 (Phase 3D 이후)
 - [ ] v9만으로 v9 실행 가능 확인
 - [ ] 모든 테스트 PASS (10/10)
 - [ ] **공식 선언: "v9 Self-Hosting 완성"**
@@ -171,24 +180,30 @@ commit: [해시]
 
 ---
 
-## 최종 선언 (2026-04-21 업데이트)
+## 최종 선언 (2026-04-21 Phase 3C 탐색 완료)
 
 ### 정확한 상태
 
-**v9 Self-Hosting 진행률: ~40% (Phase 1-3B)**
+**v9 Self-Hosting 진행률: ~40% (Phase 1-3B, 기준점 확정)**
 
 ```
 Phase 1: 렉서/파서 v9화 ✅ (완성, 10/10+10/10)
 Phase 2: 평가기 부분 v9화 ⚠️ (90% 완성, 9/10 PASS)
   - Tests 1-5, 7-10: 완전 작동 ✅ (9개 테스트)
   - Test 6: 구조적 한계 (FUNC 호출 체인)
+  - 기준점: commit b373234
 Phase 3B: TCO 최적화 인프라 ✅ (완성, loop/recur 등록)
   - native-loop/native-recur: 정상 작동 ✅
   - env-lookup TCO: 미완성 (호환성 문제)
-Phase 3C: TypeScript-FL 경계 재설계 📋 (예정)
-Phase 4: 부트스트랩 검증 📋 (예정)
+Phase 3C: 경계 재설계 탐색 ⚠️ (중단, 아키텍처 문제 확인)
+  - env-lookup TCO: 실패
+  - Primitive 네이티브화: 실패
+  - 결론: 구조 리팩토링 필요 (Phase 3D로 분리)
+Phase 3D: TS-FL 단방향 경계 재설계 📋 (별도 대공사, 예정)
+Phase 4: 부트스트랩 검증 📋 (Phase 3D 이후)
 
-완성 기준: Phase 1 + Phase 2 (10/10) + Phase 3B + Phase 3C + Phase 4
+기준점: Phase 1 + Phase 2 (9/10) + Phase 3B
+다음 단계: Phase 3D (아키텍처 완전 재설계) → Phase 4
 ```
 
 ### v9는 부분 self-hosted 상태입니다 (2026-04-21)
@@ -206,20 +221,26 @@ Phase 4: 부트스트랩 검증 📋 (예정)
 
 ### 언제 self-hosting이 완성되는가?
 
-1. **Phase 3B**: env-lookup TCO 변환 (loop/recur)
-   - 환경 체인 깊이 → callDepth 단축
-   - 더 깊은 환경 스택 지원
+**현재 기준점** (2026-04-21):
+- Phase 2: 9/10 PASS ✅ (기본 기능 완성, FUNC 호출 미해결)
+- Phase 3B: 인프라 완성 ✅ (loop/recur 등록)
+- Phase 3C: 아키텍처 문제 확인 ⚠️ (별도 대공사 필요)
 
-2. **Phase 3C**: TypeScript-FL 경계 재설계
-   - 단방향 dispatch (TS→FL, 루프백 제거)
-   - Primitive 연산 TS 네이티브 경로 확보
+**향후 경로**:
+1. **Phase 3D** (별도 단계): TS-FL 경계 완전 재설계
+   - FL 메타 인터프리터 재설계
+   - 단방향 dispatch 구현
+   - Test 6 해결 가능성 검증
 
-3. **Phase 2 Test 6 해결** (Phase 3B/3C 이후)
-   - FUNC 호출 체인 완성 (10/10 PASS)
+2. **Phase 2 완전 완성** (3D 이후)
+   - 10/10 PASS 달성
+   - FUNC 호출 체인 완전 작동
 
-4. **최종**: 이 문서에 "✅ Self-Hosting Phase 2 완성" 기록될 때
+3. **Phase 4**: 부트스트랩 최종 검증
+   - 복잡한 v9 코드 실행
+   - 공식 선언: "v9 Self-Hosting 완성"
 
-### 검증 방법 (2026-04-20)
+### 검증 방법 (2026-04-21 기준점 확정)
 
 모든 주장은 코드 + 테스트 결과로 검증 가능:
 
