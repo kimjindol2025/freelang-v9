@@ -118,14 +118,30 @@
 - TCO (loop/recur) 변환으로 callDepth 단축
 - TypeScript-FL 경계 재설계 필요
 
-### Phase 3: 인터프리터 v9화 (예상)
-- [ ] 핵심 인터프리터를 v9로 재구현
-- [ ] 특수 폼 처리를 v9로 구현
-- [ ] 부트스트랩 메커니즘 구현
+### Phase 3B: TCO 최적화 인프라 ✅ **완성** (2026-04-21)
+- ✅ native-loop 함수 등록 (interpreter.ts 라인 123-155)
+- ✅ native-recur 함수 등록 (interpreter.ts 라인 157-168)
+- ✅ loop 특수 폼 디스패치 추가 (freelang-interpreter.fl)
+- ✅ fl-eval-loop 구현 (freelang-interpreter.fl 라인 395-425)
+- ✅ flatten-bindings-helper 구현 (freelang-interpreter.fl 라인 428-440)
+- ❌ env-lookup/env-vars-find TCO 변환 실패 (호출 방식 복잡도)
+- **진행률**: 85% (인프라 완성, 적용 미완)
+- **테스트**: 9/10 PASS (변화 없음)
+- **Commit**: 5a1dc8e (phase-3b-tco merge)
+- **분석**:
+  - loop/recur 인프라는 정상 작동 ✅
+  - env-lookup TCO 변환 시 일반 테스트 깨짐 (5개 FAIL)
+  - 이유: loop/recur 패턴이 환경 조회에 호환되지 않음
+  - 다음: Phase 3C (primitives 직접 계산)
+
+### Phase 3C: TypeScript-FL 경계 재설계 (예정)
+- [ ] Primitive 연산(+, -, *, /)을 TypeScript 네이티브로
+- [ ] fl-eval-builtin 우회 경로 구현
+- [ ] Test 6 해결 가능성 검증
 
 ### Phase 4: 부트스트랩 검증 (예상)
 - [ ] v9만으로 v9 실행 가능 확인
-- [ ] 모든 테스트 PASS
+- [ ] 모든 테스트 PASS (10/10)
 - [ ] **공식 선언: "v9 Self-Hosting 완성"**
 
 ---
@@ -155,33 +171,38 @@ commit: [해시]
 
 ---
 
-## 최종 선언 (2026-04-20 기록)
+## 최종 선언 (2026-04-21 업데이트)
 
 ### 정확한 상태
 
-**v9 Self-Hosting 진행률: ~35% (Phase 1-2)**
+**v9 Self-Hosting 진행률: ~40% (Phase 1-3B)**
 
 ```
 Phase 1: 렉서/파서 v9화 ✅ (완성, 10/10+10/10)
 Phase 2: 평가기 부분 v9화 ⚠️ (90% 완성, 9/10 PASS)
   - Tests 1-5, 7-10: 완전 작동 ✅ (9개 테스트)
   - Test 6: 구조적 한계 (FUNC 호출 체인)
-Phase 3B: TCO 최적화 (env-lookup) 📋 (예정)
+Phase 3B: TCO 최적화 인프라 ✅ (완성, loop/recur 등록)
+  - native-loop/native-recur: 정상 작동 ✅
+  - env-lookup TCO: 미완성 (호환성 문제)
 Phase 3C: TypeScript-FL 경계 재설계 📋 (예정)
 Phase 4: 부트스트랩 검증 📋 (예정)
 
-완성 기준: Phase 1 + Phase 2 (10/10) + Phase 3B/3C + Phase 4
+완성 기준: Phase 1 + Phase 2 (10/10) + Phase 3B + Phase 3C + Phase 4
 ```
 
-### v9는 부분 self-hosted 상태입니다
+### v9는 부분 self-hosted 상태입니다 (2026-04-21)
 
 - ✅ 렉서(lexer): 100% v9로 작성 (10/10 PASS)
 - ✅ 파서(parser): 100% v9로 작성 (10/10 PASS)
 - ⚠️ 평가기(interpreter): 90% v9로 작성 (9/10 PASS)
   - 산술/조건/배열/let/if 완전 작동
   - FUNC 정의+호출만 미해결 (아키텍처 문제)
+- ⚠️ TCO 최적화: 인프라 완성, 적용 미완
+  - native-loop/native-recur 등록 ✅
+  - env-lookup TCO 변환 실패
 - ❌ 인터프리터 코어: 여전히 TypeScript 의존
-- **현재 self-hosting률**: ~35%
+- **현재 self-hosting률**: ~40% (Phase 3B 인프라 추가)
 
 ### 언제 self-hosting이 완성되는가?
 
