@@ -117,6 +117,66 @@ export class Interpreter {
     // Phase 49: FL 표준 라이브러리 (fl-map, fl-filter, fl-reduce, Maybe, Result 등)
     this.loadFlStdlib();
 
+    // Phase 3B: Register native loop for FL evaluator (TCO optimization)
+    // Prevents infinite recursion when FL code uses loop/recur patterns
+    this.context.functions.set("native-loop", {
+      name: "native-loop",
+      params: ["$bindings", "...body"],
+      body: (bindings: any[], ...bodyArgs: any[]) => {
+        // bindings: [[var1, init1], [var2, init2], ...]
+        // bodyArgs: body expressions
+        const loopVars: string[] = [];
+        const loopInits: any[] = [];
+
+        if (Array.isArray(bindings)) {
+          for (let i = 0; i < bindings.length; i += 2) {
+            loopVars.push(String(bindings[i]));
+            loopInits.push(bindings[i + 1]);
+          }
+        }
+
+        this.context.variables.push();
+        for (let i = 0; i < loopVars.length; i++) {
+          this.context.variables.set(loopVars[i], loopInits[i]);
+        }
+
+        let result: any = null;
+        const maxIter = 100000;
+        let iter = 0;
+        try {
+          while (iter++ < maxIter) {
+            let recurred = false;
+            for (const bodyExpr of bodyArgs) {
+              result = this.eval(bodyExpr);
+              // Check for recur signal: { __FL_RECUR__: true, __args: [...] }
+              if (result && typeof result === "object" && result.__FL_RECUR__) {
+                const newVals = result.__args as any[];
+                for (let i = 0; i < loopVars.length && i < newVals.length; i++) {
+                  this.context.variables.set(loopVars[i], newVals[i]);
+                }
+                recurred = true;
+                break;
+              }
+            }
+            if (!recurred) break;
+          }
+        } finally {
+          this.context.variables.pop();
+        }
+        return result;
+      },
+    });
+
+    // Phase 3B: Register native recur function
+    this.context.functions.set("native-recur", {
+      name: "native-recur",
+      params: ["...args"],
+      body: (...args: any[]) => ({
+        __FL_RECUR__: true,
+        __args: args,
+      }),
+    });
+
     // Phase 5 Week 2: Register built-in type classes and instances
     this.registerBuiltinTypeClasses();
 
