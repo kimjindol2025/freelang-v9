@@ -1,10 +1,14 @@
 # FreeLang v9 Self-Hosting 상태 기록
 
-## 현재 단계: Phase 2 (테스트 10/10 PASS, 부분 완성) (2026-04-19)
+## 현재 단계: Phase 4 (테스트 13/13 PASS 달성) (2026-04-21)
 
 ### Phase 2: `interpreter.fl` 및 평가기 핵심 v9화
 
-**상태**: 10/10 PASS ✅ (테스트 완전 통과)
+**상태**: 10/10 PASS ✅ (테스트 완전 통과, 지속 유지)
+
+### Phase 4: 고급 함수 기능 검증
+
+**상태**: 3/3 PASS ✅ (재귀, 고차함수 지원)
 
 **주의**: 완전한 self-hosting이 아님
 - ✅ 렉서/파서: 100% v9 구현
@@ -12,7 +16,7 @@
 - ❌ **fl-apply**: TypeScript native case (Phase 3D-v4 패치)
 - ⚠️ 평가기가 **TypeScript 엔진**에 의존 (부트스트랩 불완전)
 
-모든 테스트 통과 (selfhosting-interpreter.test.ts):
+Phase 2 모든 테스트 통과 (selfhosting-interpreter.test.ts):
 - ✅ 1. 산술: (+ 1 2) → 3
 - ✅ 2. let 바인딩: (let [[$x 10]] $x) → 10
 - ✅ 3. if 참: (if true "yes" "no") → "yes"
@@ -23,6 +27,11 @@
 - ✅ 8. 불린: true → true, false → false
 - ✅ 9. 중첩: (+ (* 2 3) 4) → 10
 - ✅ 10. let + if: (let [[$x 10]] (if (> $x 5) "big" "small")) → "big"
+
+Phase 4 모든 테스트 통과 (selfhosting-advanced.test.ts):
+- ✅ 11. 재귀: factorial(5) = 120
+- ✅ 12. 재귀: fibonacci(7) = 13
+- ✅ 13. 고차함수: make-adder 클로저 반환 (3+4=7)
 
 ### Test 6 해결책 (TypeScript 패치) (Commit: b2b32bb)
 
@@ -161,16 +170,45 @@ interpret(ast)
 - ❌ fl-apply: TypeScript 의존
 - ❌ 타입 시스템, 모듈 시스템 등: TypeScript 의존
 
+## 해결된 문제 (Phase 4, 2026-04-21)
+
+### 재귀 함수 지원 추가
+
+**문제**: 각 closure의 closure-env가 생성 시점의 env를 capture하므로, 함수가 자신이나 다른 함수를 호출할 수 없었음.
+
+**해결책**: TypeScript `case "fl-load-all-funcs":`를 추가하여, 모든 함수를 먼저 등록한 후 **각 closure의 closure-env를 완전한 env로 동적 업데이트**.
+
+```typescript
+// eval-builtins.ts (라인 476-500)
+case "fl-load-all-funcs": {
+  const nodes: any[] = Array.isArray(args[0]) ? args[0] : [];
+  // Step 1: 모든 함수 등록
+  let env: any = { vars: [], parent: null };
+  for (const node of nodes) {
+    if (node && node.kind === "block" && node.type === "FUNC") {
+      const closure = flInterpNative(node, env);
+      env = flEnvBind(env, node.name, closure);
+    }
+  }
+  // Step 2: 모든 closure의 closure-env를 완전한 env로 업데이트
+  if (env.vars && Array.isArray(env.vars)) {
+    for (const pair of env.vars) {
+      if (pair && pair[1] && pair[1].kind === "closure") {
+        pair[1]["closure-env"] = env;
+      }
+    }
+  }
+  return env;
+}
+```
+
+**결과**: 재귀/상호재귀 함수 완전 지원 ✅
+
 ## 향후 계획
 
-### Phase 3: 최적화
+### Phase 3: 최적화 (선택사항)
 - TCO 변환: env-lookup → loop/recur
-- 목표: callDepth 의존도 완전 제거
-
-### Phase 4: 고급 기능
-- 재귀 함수 (factorial, fibonacci 등)
-- 고차 함수 (map, filter, reduce 패턴)
-- 상호 재귀 (mutual recursion)
+- 목표: callDepth 의존도 감소
 
 ### Phase 5: 완전 부트스트랩
 - 모든 v9 기본 기능의 v9 구현

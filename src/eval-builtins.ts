@@ -470,6 +470,32 @@ export function evalBuiltin(interp: Interpreter, op: string, args: any[], expr: 
       return flApplyNative(fn, vals);
     }
 
+    // fl-load-all-funcs: 모든 FUNC를 등록하되, 각 closure의 closure-env를 완전한 env로 설정
+    // Phase 4 재귀 지원: 상호 재귀, 자기 참조 가능
+    case "fl-load-all-funcs": {
+      const nodes: any[] = Array.isArray(args[0]) ? args[0] : [];
+
+      // Step 1: 환경에 모든 함수 순차 등록 (초기 env-new)
+      let env: any = { vars: [], parent: null };
+      for (const node of nodes) {
+        if (node && node.kind === "block" && node.type === "FUNC") {
+          const closure = flInterpNative(node, env);
+          env = flEnvBind(env, node.name, closure);
+        }
+      }
+
+      // Step 2: 모든 closure의 closure-env를 완전한 env로 업데이트 (재귀 지원)
+      if (env.vars && Array.isArray(env.vars)) {
+        for (const pair of env.vars) {
+          if (pair && pair[1] && pair[1].kind === "closure") {
+            pair[1]["closure-env"] = env;
+          }
+        }
+      }
+
+      return env;
+    }
+
     // Arithmetic
     case "+":
       return args.reduce((a: number, b: number) => a + b, 0);

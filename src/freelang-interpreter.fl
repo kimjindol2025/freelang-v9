@@ -479,6 +479,7 @@
 ; ── 프로그램 해석 ─────────────────────────────────────────────
 
 ; FUNC 블록들을 환경에 미리 등록 (상호 재귀 지원)
+; Step 1: 순차적 등록 (첫 번째 pass)
 [FUNC fl-load-funcs :params [$nodes $env $i]
   :body (
     (if (>= $i (length $nodes))
@@ -491,6 +492,35 @@
           (fl-load-funcs $nodes $env (+ $i 1))
         )
       )
+    )
+  )
+]
+
+; Step 2: 완전한 환경으로 재등록 (closure-env 수정)
+; 첫 번째 pass에서 등록된 env를 $fullenv로 받아서,
+; 모든 FUNC를 다시 평가하되 $fullenv를 closure-env로 사용
+[FUNC fl-load-funcs-fixed :params [$nodes $fullenv $i]
+  :body (
+    (if (>= $i (length $nodes))
+      $fullenv
+      (let [[$node (get $nodes $i)]]
+        (if (and (= (get $node :kind) "block") (= (get $node :type) "FUNC"))
+          (let [[$fn (fl-eval-block $node $fullenv)]]
+            ; $fn의 closure-env는 이제 $fullenv (완전)
+            (fl-load-funcs-fixed $nodes (env-bind $fullenv (get $node :name) $fn) (+ $i 1))
+          )
+          (fl-load-funcs-fixed $nodes $fullenv (+ $i 1))
+        )
+      )
+    )
+  )
+]
+
+; Step 3: 통합 함수 — 두 pass 연결
+[FUNC fl-load-all-funcs :params [$nodes]
+  :body (
+    (let [[$env1 (fl-load-funcs $nodes (env-new) 0)]]
+      (fl-load-funcs-fixed $nodes $env1 0)
     )
   )
 ]
@@ -538,7 +568,7 @@
 ; 메인 진입점: AST 배열 → 마지막 평가값
 [FUNC interpret :params [$ast]
   :body (
-    (let [[$env (fl-load-funcs $ast (env-new) 0)]]
+    (let [[$env (fl-load-all-funcs $ast)]]
       (fl-run-nodes $ast $env 0 null)
     )
   )
