@@ -74,8 +74,46 @@ case "fl-apply": {
 - Phase 2 테스트: 10/10 PASS ✅
 - Phase 4 테스트: 3/3 PASS ✅
 - **총 13/13 PASS**
-- self-hosting 진행률: ~40% (렉서/파서 100%, 평가기 핵심 90%, 재귀 TS 패치)
+- self-hosting 진행률: **~40%** (렉서/파서 100%, 평가기 핵심 90%, 재귀 TS 패치)
 - 완전한 self-hosting: ❌ (TypeScript 2개 native case 필수: fl-apply, fl-load-all-funcs)
+
+---
+
+## 🚨 기술적 한계 분석 (2026-04-19)
+
+### 불가능한 이유: TypeScript 뮤테이션
+
+**fl-load-all-funcs** 재귀 지원 필요 조건:
+```
+모든 closure가 "동일한" env를 closure-env로 가리켜야 함
+```
+
+**FL의 2-pass 재평가 시도** (freelang-interpreter.fl:499-526):
+```fl
+[FUNC fl-load-funcs-fixed :params [$nodes $fullenv $i]
+  :body (
+    ...
+    (fl-load-funcs-fixed $nodes (env-bind $fullenv ...) (+ $i 1))
+    ;              ↑ 새 env 반환!
+  )
+]
+```
+
+**문제**:
+- `env-bind`는 새 env를 반환 (immutable)
+- 매 iteration마다 새로운 env 생성
+- 이전 함수들의 closure-env는 구 env를 가리킴
+- 재귀 시 최신 함수 찾기 실패 → 결과: 0
+
+**해결책**:
+- TypeScript `fl-load-all-funcs` native case의 뮤테이션
+- 모든 closure의 closure-env를 "동일" env로 set
+- FL은 불변(immutable) 데이터 구조 지향 → 뮤테이션 불가능
+
+**결론**:
+- ❌ FL 순수 코드로 "진정한 self-hosting" 불가능
+- ✅ ~40% self-hosting은 현실적 한계
+- 🎯 완전 self-hosting을 위해서는 FL 언어 확장 필요 (타입 시스템, 뮤테이션 프로토콜 등)
 
 ### 다음 단계
 

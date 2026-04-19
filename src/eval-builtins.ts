@@ -485,6 +485,9 @@ export function evalBuiltin(interp: Interpreter, op: string, args: any[], expr: 
       }
 
       // Step 2: 모든 closure의 closure-env를 완전한 env로 업데이트 (재귀 지원)
+      // ⚠️ FL 2-pass 방식 (freelang-interpreter.fl:499-526) 실패:
+      //    env-bind는 새 env를 반환하므로, 각 함수가 다른 env를 가리킴
+      // ⚠️ 해결책: TypeScript 뮤테이션으로 모든 closure를 동일 env로 업데이트
       if (env.vars && Array.isArray(env.vars)) {
         for (const pair of env.vars) {
           if (pair && pair[1] && pair[1].kind === "closure") {
