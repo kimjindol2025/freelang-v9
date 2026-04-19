@@ -250,29 +250,65 @@ case "fl-load-all-funcs": {
 - fl-load-all-funcs 함수 정의는 v9이지만
 - 핵심 logic (closure-env 업데이트)은 TypeScript native case
 
+## Phase 5: 아키텍처 재설계 시도 (2026-04-22) — ref 타입 도입 기획
+
+### 목표
+TypeScript 패치 제거 (fl-apply, fl-load-all-funcs) → **60% self-hosting** 달성
+
+### 설계
+**Ref 타입**: `{ __ref__: true, value: any }`
+- **FUNC 블록**: shared env-ref (모든 closure가 같은 ref 공유)
+- **익명 fn**: snapshot ref (생성 시점 env capture)
+
+### 구현 과정
+
+**Step 1-4**: ✅ 완료
+- TypeScript ref operations 추가 (ref-new/ref-get/ref-set!)
+- flApplyNative, flInterpNative 수정
+- FL 코드 수정 (make-closure, fl-eval-fn, fl-apply 등)
+
+**Step 5-7**: ❌ 실패 (2026-04-22)
+- **문제**: FL 코드에서 ref-new/ref-get/ref-set! 호출 불가
+  - interpreter가 native case를 찾지 못함 (FL 함수 우선)
+  - ref를 사용하는 모든 FL 함수가 무한 재귀 → Stack Overflow
+- **근본 원인**: 
+  - FL의 immutable 특성과 ref(mutable) 간 충돌
+  - FL 코드 → native case 직접 호출 불가능 (interpreter 제약)
+
+### 결론
+- **기술적 한계**: ref를 FL 코드에서 사용 불가능
+- **현실적 해결책**: Phase 4 상태 유지 (40% self-hosting)
+- **추가 시도 필요**:
+  1. TCO (Tail Call Optimization) → callDepth 감소
+  2. ref를 별도의 특수형식으로 처리 (do block과 유사)
+  3. FL 언어 확장 (mutable data structure 지원)
+
+---
+
 ## 향후 계획
 
 ### Phase 3: 최적화 (선택사항)
 - TCO 변환: env-lookup → loop/recur
 - 목표: callDepth 의존도 감소
 
-### Phase 5: 완전 부트스트랩
-- 모든 v9 기본 기능의 v9 구현
-- 외부 TypeScript 의존성 최소화
+### Phase 5-Next: 재설계 방안
+1. **TCO**: callDepth 문제 완화 (중기)
+2. **Special Form**: ref를 특수형식으로 구현 (중기)
+3. **언어 확장**: mutable protocol 추가 (장기)
 
 ---
 
 ## 브랜치 및 커밋
 
 - **Branch**: `master`
-- **Commit**: `b2b32bb` (Phase 3D-v4: native fl-apply case)
+- **Commit**: `40922d6` (Phase 4 완성: 재귀/고차함수 지원)
 - **Gogs Push**: ✅ 완료
 
-**현재 시간**: 2026-04-21 (거짓 보고 정정 완료)
-**테스트 실행**: 
-  - selfhosting-interpreter.test.ts (5.7s) → 10/10 PASS
-  - selfhosting-advanced.test.ts (6.25s) → 3/3 PASS
-**상태**: ⚠️ Phase 4 완성 (완전한 self-hosting 아님, TypeScript 2개 패치)
+**현재 시간**: 2026-04-22
+**테스트 실행** (Phase 5 시도 후 복원):
+  - selfhosting-interpreter.test.ts → 10/10 PASS ✅
+  - selfhosting-advanced.test.ts → 3/3 PASS ✅
+**상태**: ⚠️ Phase 4 유지 (완전한 self-hosting 아님, TypeScript 2개 패치)
   - fl-apply: closure 적용 (TS native)
   - fl-load-all-funcs: closure-env 업데이트 (TS native)
-**다음**: Phase 5에서 2개 native case를 FL로 완전히 재구현 필요
+**Phase 5 결과**: ref 타입 도입 실패 (FL-TS 경계 문제)
