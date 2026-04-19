@@ -424,6 +424,52 @@ export function evalBuiltin(interp: Interpreter, op: string, args: any[], expr: 
   const toDisplay = (val: any) => (interp as any).toDisplayString(val);
 
   switch (op) {
+    // Phase 3D-v3: FL meta-interpreter 핵심 함수 네이티브 처리 (JS 스택 오버플로우 방지)
+    case "fl-eval-builtin": {
+      const flOp = String(args[0]);
+      const flVals: any[] = Array.isArray(args[1]) ? args[1] : [];
+      return flExecOpNative(flOp, flVals);
+    }
+
+    // env-lookup: FL 재귀 체인 제거 (env-vars-find × N 회피)
+    case "env-lookup": {
+      let cur = args[0];
+      const name = String(args[1]);
+      while (cur !== null && cur !== undefined) {
+        const vars: any[] = cur.vars || [];
+        for (const pair of vars) {
+          if (Array.isArray(pair) && pair[0] === name) return pair[1];
+        }
+        cur = cur.parent;
+      }
+      return null;
+    }
+
+    // env-vars-find: 재귀 → 반복 (추가 안전망)
+    case "env-vars-find": {
+      const vars: any[] = Array.isArray(args[0]) ? args[0] : [];
+      const name = String(args[1]);
+      const startI = Number(args[2]) || 0;
+      for (let i = startI; i < vars.length; i++) {
+        if (Array.isArray(vars[i]) && vars[i][0] === name) return vars[i][1];
+      }
+      return null;
+    }
+
+    // closure?: FL 함수 호출 제거 → 직접 체크
+    case "closure?": {
+      const v = args[0];
+      return v !== null && v !== undefined && typeof v === "object" && v.kind === "closure";
+    }
+
+    // fl-apply: FL meta-interpreter closure 적용을 native로 처리
+    // fl-eval-call → (fl-apply $fn $vals) 경로를 intercept
+    case "fl-apply": {
+      const fn = args[0];
+      const vals: any[] = Array.isArray(args[1]) ? args[1] : [];
+      return flApplyNative(fn, vals);
+    }
+
     // Arithmetic
     case "+":
       return args.reduce((a: number, b: number) => a + b, 0);
