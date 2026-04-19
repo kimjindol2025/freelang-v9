@@ -1,10 +1,16 @@
 # FreeLang v9 Self-Hosting 상태 기록
 
-## 현재 단계: Phase 2 ✅ 완성 (2026-04-19)
+## 현재 단계: Phase 2 (테스트 10/10 PASS, 부분 완성) (2026-04-19)
 
-### Phase 2: `interpreter.fl` 완전 v9화
+### Phase 2: `interpreter.fl` 및 평가기 핵심 v9화
 
-**상태**: 10/10 PASS ✅
+**상태**: 10/10 PASS ✅ (테스트 완전 통과)
+
+**주의**: 완전한 self-hosting이 아님
+- ✅ 렉서/파서: 100% v9 구현
+- ✅ 평가기 핵심: ~90% v9 구현 (fl-eval, fl-eval-sexpr, fl-eval-call, fl-eval-builtin 등)
+- ❌ **fl-apply**: TypeScript native case (Phase 3D-v4 패치)
+- ⚠️ 평가기가 **TypeScript 엔진**에 의존 (부트스트랩 불완전)
 
 모든 테스트 통과 (selfhosting-interpreter.test.ts):
 - ✅ 1. 산술: (+ 1 2) → 3
@@ -18,7 +24,9 @@
 - ✅ 9. 중첩: (+ (* 2 3) 4) → 10
 - ✅ 10. let + if: (let [[$x 10]] (if (> $x 5) "big" "small")) → "big"
 
-### 핵심 해결책 (Commit: b2b32bb)
+### Test 6 해결책 (TypeScript 패치) (Commit: b2b32bb)
+
+⚠️ **주의**: 이것은 완전한 v9 구현이 아닌 **TypeScript 부분 해결**입니다.
 
 **파일**: `src/eval-builtins.ts` (line 465-470)
 
@@ -31,10 +39,15 @@ case "fl-apply": {
 }
 ```
 
-**근거**:
-- Test 6 실패 원인: `(fl-apply $fn $vals)` → `callUserFunction("fl-apply")` → FL body eval → 12 nested ifs in fl-eval-sexpr → JS 스택 오버플로우
-- 해결: native case intercept → `flApplyNative` (C-style loop) → `flInterpNative` (FL 특수 형식 처리) → `flExecOpNative` (산술)
-- 결과: JS 스택 깊이 ~200-250 (10,000 한계의 2.5%)
+**원인**:
+- Test 6 타임아웃: `(fl-apply $fn $vals)` → `callUserFunction("fl-apply")` → FL body eval → 12 nested ifs → JS 스택 오버플로우
+- 완전한 해결: FL 코드에서 fl-apply를 v9로 구현하고, TypeScript는 native case 없음
+- **이 패치**: TypeScript에서 fl-apply 호출을 직접 처리 (FL 바이패스)
+
+**현재 상태**:
+- ✅ JS 스택 깊이 해결 (200-250 프레임)
+- ❌ 여전히 TypeScript에 의존 (fl-apply native case)
+- ⚠️ 진정한 self-hosting이 아님 (FL만으로 평가기 완성 불가)
 
 ### 진행 현황 요약
 
@@ -43,10 +56,21 @@ case "fl-apply": {
 | Phase 1A | env-lookup v9화 | ✅ | 6/6 PASS |
 | Phase 1B | freelang-lexer.fl | ✅ | 10/10 PASS |
 | Phase 1C | freelang-parser.fl | ✅ | 10/10 PASS |
-| **Phase 2** | **freelang-interpreter.fl** | **✅** | **10/10 PASS** |
-| Phase 3+ | TCO 최적화, 고급 기능 | 📋 계획 | - |
+| **Phase 2** | **freelang-interpreter.fl** | ⚠️ 부분 | **10/10 PASS** (Test 6: TS 패치) |
+| Phase 3D-v4 | fl-apply native case | ❌ | TypeScript 의존 |
+| Phase 3+ | TCO 최적화, 완전 v9화 | 📋 계획 | - |
+
+**현황 정정 (2026-04-19)**:
+- 테스트: 10/10 PASS ✅
+- self-hosting 진행률: ~30-40% (렉서/파서/평가기 핵심만 v9, 나머지 TS)
+- 완전한 self-hosting: ❌ (TypeScript 엔진 필수)
 
 ### 다음 단계
+
+**Phase 3D-Final**: fl-apply를 FL로 재구현 (TypeScript 패치 제거)
+- 목표: 현재 TypeScript native case를 FL 코드로 작성
+- 도전: FL 코드가 `flApplyNative` 동작을 재현해야 함
+- 중요도: 높음 (진정한 self-hosting 필수 조건)
 
 **Phase 3**: TCO 최적화 (env-lookup, env-vars-find → loop/recur)
 - 목표: callDepth 의존도 감소, 더 깊은 환경 체인 지원
@@ -54,7 +78,7 @@ case "fl-apply": {
 
 **Phase 4**: 고급 케이스 검증
 - 재귀 함수, 고차 함수, 상호 재귀 등
-- 목표: 완전 self-hosting 검증
+- 목표: 완전 self-hosting 검증 (fl-apply v9화 후)
 
 ## 아키텍처 정리
 
@@ -118,14 +142,24 @@ interpret(ast)
 
 ## 검증 기준
 
-✅ **Phase 2 완성 기준** (모두 충족):
+⚠️ **Phase 2 테스트 기준** (모두 충족):
 - [x] 렉서 v9화: 10/10 PASS
 - [x] 파서 v9화: 10/10 PASS
-- [x] 평가기 v9화: 10/10 PASS
+- [x] 평가기 v9화 (핵심): 10/10 PASS
 - [x] Full chain 검증: `(interpret (parse (lex "...")))` 동작
+- ⚠️ **주의**: fl-apply는 TypeScript 패치 (완전한 v9화 아님)
 
-✅ **현재 v9 커버리지**: ~100% (기본 언어 기능)
-- Arithmetic, let, if, function definition, arrays, booleans
+❌ **Phase 2 Self-Hosting 완성 기준** (미충족):
+- fl-apply를 FL 코드로 구현할 것 (현재: TypeScript native case)
+- TypeScript 엔진 없이 동작할 것
+- 현재: 여전히 TypeScript 부트스트랩 필요
+
+**현재 v9 커버리지**: ~30-40% (렉서, 파서, 평가기 핵심)
+- ✅ 렉서 전체 v9화
+- ✅ 파서 전체 v9화
+- ✅ 평가기 핵심 (fl-eval, fl-eval-sexpr 등) v9화
+- ❌ fl-apply: TypeScript 의존
+- ❌ 타입 시스템, 모듈 시스템 등: TypeScript 의존
 
 ## 향후 계획
 
@@ -150,6 +184,7 @@ interpret(ast)
 - **Commit**: `b2b32bb` (Phase 3D-v4: native fl-apply case)
 - **Gogs Push**: ✅ 완료
 
-**현재 시간**: 2026-04-19 13:43 UTC
-**테스트 실행**: selfhosting-interpreter.test.ts (8.758s)
-**상태**: ✅ 배포 준비 완료
+**현재 시간**: 2026-04-19 13:50 UTC (정정 완료)
+**테스트 실행**: selfhosting-interpreter.test.ts (8.758s) → 10/10 PASS
+**상태**: ⚠️ 테스트 완전 통과 (완전한 self-hosting 아님, TypeScript 패치 적용)
+**다음**: Phase 3D-Final에서 fl-apply를 FL로 재구현 필요
