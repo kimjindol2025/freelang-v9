@@ -1,13 +1,15 @@
 /**
- * Phase 4: Advanced Self-Hosting Features
- * Test recursive functions, higher-order functions, and FL map
+ * Phase 4: Advanced Self-Hosting Features (재귀/고차함수)
+ * Test recursive functions, higher-order functions
  *
- * All components are v9 language:
- * - freelang-lexer.fl
- * - freelang-parser.fl
- * - freelang-interpreter.fl
+ * ⚠️ 부분 self-hosting 상태 (TypeScript 패치 포함):
+ * - freelang-lexer.fl: ✅ v9 구현
+ * - freelang-parser.fl: ✅ v9 구현
+ * - freelang-interpreter.fl: ✅ v9 구현
+ * - fl-load-all-funcs: ❌ TypeScript native case (재귀 해결용)
+ *   → closure-env 동적 업데이트는 TypeScript에서만 가능
  *
- * Test cases: 4 scenarios covering advanced operations
+ * Test cases: 3 scenarios (재귀, 고차함수 검증)
  */
 
 import { Interpreter } from '../interpreter';

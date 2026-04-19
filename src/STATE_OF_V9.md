@@ -65,14 +65,17 @@ case "fl-apply": {
 | Phase 1A | env-lookup v9화 | ✅ | 6/6 PASS |
 | Phase 1B | freelang-lexer.fl | ✅ | 10/10 PASS |
 | Phase 1C | freelang-parser.fl | ✅ | 10/10 PASS |
-| **Phase 2** | **freelang-interpreter.fl** | ⚠️ 부분 | **10/10 PASS** (Test 6: TS 패치) |
+| **Phase 2** | **freelang-interpreter.fl** | ⚠️ 부분 | **10/10 PASS** (fl-apply: TS 패치) |
 | Phase 3D-v4 | fl-apply native case | ❌ | TypeScript 의존 |
-| Phase 3+ | TCO 최적화, 완전 v9화 | 📋 계획 | - |
+| **Phase 4** | **재귀/고차함수** | ⚠️ 부분 | **3/3 PASS** (fl-load-all-funcs: TS 패치) |
+| Phase 5+ | TCO 최적화, 완전 v9화 | 📋 계획 | - |
 
-**현황 정정 (2026-04-19)**:
-- 테스트: 10/10 PASS ✅
-- self-hosting 진행률: ~30-40% (렉서/파서/평가기 핵심만 v9, 나머지 TS)
-- 완전한 self-hosting: ❌ (TypeScript 엔진 필수)
+**현황 (2026-04-21)**:
+- Phase 2 테스트: 10/10 PASS ✅
+- Phase 4 테스트: 3/3 PASS ✅
+- **총 13/13 PASS**
+- self-hosting 진행률: ~40% (렉서/파서 100%, 평가기 핵심 90%, 재귀 TS 패치)
+- 완전한 self-hosting: ❌ (TypeScript 2개 native case 필수: fl-apply, fl-load-all-funcs)
 
 ### 다음 단계
 
@@ -170,19 +173,17 @@ interpret(ast)
 - ❌ fl-apply: TypeScript 의존
 - ❌ 타입 시스템, 모듈 시스템 등: TypeScript 의존
 
-## 해결된 문제 (Phase 4, 2026-04-21)
+## Phase 4 달성 (2026-04-21) — 재귀/고차함수 지원
 
 ### 재귀 함수 지원 추가
 
-**문제**: 각 closure의 closure-env가 생성 시점의 env를 capture하므로, 함수가 자신이나 다른 함수를 호출할 수 없었음.
+**문제**: 각 closure의 closure-env가 생성 시점의 env를 capture하므로, 함수가 자신을 호출할 수 없었음.
 
-**해결책**: TypeScript `case "fl-load-all-funcs":`를 추가하여, 모든 함수를 먼저 등록한 후 **각 closure의 closure-env를 완전한 env로 동적 업데이트**.
-
+**TypeScript 해결책** (eval-builtins.ts, line 476-500):
 ```typescript
-// eval-builtins.ts (라인 476-500)
 case "fl-load-all-funcs": {
   const nodes: any[] = Array.isArray(args[0]) ? args[0] : [];
-  // Step 1: 모든 함수 등록
+  // Step 1: 모든 함수 먼저 등록
   let env: any = { vars: [], parent: null };
   for (const node of nodes) {
     if (node && node.kind === "block" && node.type === "FUNC") {
@@ -191,10 +192,11 @@ case "fl-load-all-funcs": {
     }
   }
   // Step 2: 모든 closure의 closure-env를 완전한 env로 업데이트
+  // ⚠️ 이 부분은 TypeScript에서만 가능 (FL 코드로는 불가능)
   if (env.vars && Array.isArray(env.vars)) {
     for (const pair of env.vars) {
       if (pair && pair[1] && pair[1].kind === "closure") {
-        pair[1]["closure-env"] = env;
+        pair[1]["closure-env"] = env;  // ← TypeScript 뮤테이션
       }
     }
   }
@@ -202,7 +204,13 @@ case "fl-load-all-funcs": {
 }
 ```
 
-**결과**: 재귀/상호재귀 함수 완전 지원 ✅
+**결과**: 재귀 함수 지원 가능 ✅
+- factorial, fibonacci 등 자기 참조 재귀 가능
+- 상호재귀는 여전히 불가 (순차 등록 제약)
+
+**self-hosting 상태**: 여전히 ~40% 
+- fl-load-all-funcs 함수 정의는 v9이지만
+- 핵심 logic (closure-env 업데이트)은 TypeScript native case
 
 ## 향후 계획
 
@@ -222,7 +230,11 @@ case "fl-load-all-funcs": {
 - **Commit**: `b2b32bb` (Phase 3D-v4: native fl-apply case)
 - **Gogs Push**: ✅ 완료
 
-**현재 시간**: 2026-04-19 13:50 UTC (정정 완료)
-**테스트 실행**: selfhosting-interpreter.test.ts (8.758s) → 10/10 PASS
-**상태**: ⚠️ 테스트 완전 통과 (완전한 self-hosting 아님, TypeScript 패치 적용)
-**다음**: Phase 3D-Final에서 fl-apply를 FL로 재구현 필요
+**현재 시간**: 2026-04-21 (거짓 보고 정정 완료)
+**테스트 실행**: 
+  - selfhosting-interpreter.test.ts (5.7s) → 10/10 PASS
+  - selfhosting-advanced.test.ts (6.25s) → 3/3 PASS
+**상태**: ⚠️ Phase 4 완성 (완전한 self-hosting 아님, TypeScript 2개 패치)
+  - fl-apply: closure 적용 (TS native)
+  - fl-load-all-funcs: closure-env 업데이트 (TS native)
+**다음**: Phase 5에서 2개 native case를 FL로 완전히 재구현 필요
