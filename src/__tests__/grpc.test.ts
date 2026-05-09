@@ -20,7 +20,8 @@ describe('Phase 152: gRPC Support', () => {
          :has-message (some (fn [t] (= t "message")) tokens)
          :has-brace (some (fn [t] (= t "{")) tokens)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.count).toBe(true);
     expect(result['has-message']).toBe(true);
     expect(result['has-brace']).toBe(true);
@@ -38,7 +39,8 @@ describe('Phase 152: gRPC Support', () => {
          :name (= (:name msg) "User")
          :fields (= (count (:fields msg)) 2)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result.name).toBe(true);
     expect(result.fields).toBe(true);
@@ -57,7 +59,8 @@ describe('Phase 152: gRPC Support', () => {
          :name (= (:name field) "name")
          :number (= (:number field) 1)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result.name).toBe(true);
     expect(result.number).toBe(true);
@@ -76,7 +79,8 @@ describe('Phase 152: gRPC Support', () => {
          :name (= (:name svc) "UserService")
          :methods (= (count (:methods svc)) 1)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result.name).toBe(true);
     expect(result.methods).toBe(true);
@@ -95,7 +99,8 @@ describe('Phase 152: gRPC Support', () => {
          :post-found (not (nil? post))
          :user-name (= (:name user) "User")})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['user-found']).toBe(true);
     expect(result['post-found']).toBe(true);
     expect(result['user-name']).toBe(true);
@@ -112,7 +117,8 @@ describe('Phase 152: gRPC Support', () => {
          :has-id (string? (:server-id server))
          :empty-services (= (count (:services server)) 0)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-port']).toBe(true);
     expect(result['has-id']).toBe(true);
     expect(result['empty-services']).toBe(true);
@@ -130,7 +136,8 @@ describe('Phase 152: gRPC Support', () => {
         {:registered (not (nil? (get (:services updated) "UserService")))
          :methods-count (= (count (get (:services updated) "UserService")) 1)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.registered).toBe(true);
     expect(result['methods-count']).toBe(true);
   });
@@ -147,7 +154,8 @@ describe('Phase 152: gRPC Support', () => {
         {:handler-registered (not (nil? (get (:handlers updated) "UserService/GetUser")))
          :handler-callable (fn? (get (:handlers updated) "UserService/GetUser"))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['handler-registered']).toBe(true);
     expect(result['handler-callable']).toBe(true);
   });
@@ -164,7 +172,8 @@ describe('Phase 152: gRPC Support', () => {
          :service-ok (= (:service-name client) "UserService")
          :has-breaker (not (nil? (:breaker client)))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['host-ok']).toBe(true);
     expect(result['port-ok']).toBe(true);
     expect(result['service-ok']).toBe(true);
@@ -184,7 +193,8 @@ describe('Phase 152: gRPC Support', () => {
         {:valid (validate-message valid-msg fields)
          :invalid (not (validate-message invalid-msg fields))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.valid).toBe(true);
     expect(result.invalid).toBe(true);
   });
@@ -204,7 +214,8 @@ describe('Phase 152: gRPC Support', () => {
          :value-1 (= (get serialized "1") "John")
          :value-2 (= (get serialized "2") 30)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-1']).toBe(true);
     expect(result['has-2']).toBe(true);
     expect(result['value-1']).toBe(true);
@@ -224,7 +235,8 @@ describe('Phase 152: gRPC Support', () => {
         {:name (= (:name deserialized) "John")
          :age (= (:age deserialized) 30)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.name).toBe(true);
     expect(result.age).toBe(true);
   });
@@ -240,7 +252,8 @@ describe('Phase 152: gRPC Support', () => {
          :retries (= (:retries meta) 5)
          :headers (map? (:headers meta))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.timeout).toBe(true);
     expect(result.retries).toBe(true);
     expect(result.headers).toBe(true);
@@ -259,7 +272,8 @@ describe('Phase 152: gRPC Support', () => {
          :is-closed (= (:state metrics) :closed)
          :healthy (:is-healthy metrics)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['breaker-exists']).toBe(true);
     expect(result['is-closed']).toBe(true);
     expect(result.healthy).toBe(true);
@@ -281,7 +295,8 @@ describe('Phase 152: gRPC Support', () => {
          :method-found (not (nil? method))
          :method-input (= (:input method) "UserId")})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['msg-found']).toBe(true);
     expect(result['svc-found']).toBe(true);
     expect(result['method-found']).toBe(true);
