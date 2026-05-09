@@ -11,7 +11,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
 
   beforeEach(() => {
     const resetCode = `(load "src/metrics.fl") (reset-metrics)`;
-    interp.eval(resetCode);
+    const ast_reset = interp.parse(resetCode);
+    interp.eval(ast_reset);
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -28,7 +29,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
            :value (= (:value metric) 5)
            :help-set (string? (:help counter))}))
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result.value).toBe(true);
     expect(result['help-set']).toBe(true);
@@ -47,7 +49,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
           {:type (= (:type gauge) :gauge)
            :value (= (:value metric) 25)}))
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result.value).toBe(true);
   });
@@ -67,7 +70,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
            :count (= (:count metric) 2)
            :sum-positive (> (:sum metric) 0)}))
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result.count).toBe(true);
     expect(result['sum-positive']).toBe(true);
@@ -88,7 +92,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
            :count (= (:count metric) 2)
            :values-stored (= (count (:values metric)) 2)}))
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result.count).toBe(true);
     expect(result['values-stored']).toBe(true);
@@ -113,7 +118,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
          :max-correct (= max 30)
          :min-correct (= min 10)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['sum-correct']).toBe(true);
     expect(result['avg-correct']).toBe(true);
     expect(result['max-correct']).toBe(true);
@@ -134,7 +140,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
            :has-type (str-includes? text "TYPE test_counter counter")
            :has-value (str-includes? text " 42")}))
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-help']).toBe(true);
     expect(result['has-type']).toBe(true);
     expect(result['has-value']).toBe(true);
@@ -156,7 +163,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
           {:p50-exists (not (nil? p50))
            :p95-exists (not (nil? p95))}))
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['p50-exists']).toBe(true);
     expect(result['p95-exists']).toBe(true);
   });
@@ -174,7 +182,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
         {:within-limit (:within-limit cardinality)
          :has-usage (:usage-percentage cardinality)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['within-limit']).toBe(true);
     expect(typeof result['has-usage']).toBe('number');
   });
@@ -192,7 +201,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
          :has-samples (number? (:sample-count memory))
          :has-mb (number? (:estimated-mb memory))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-count']).toBe(true);
     expect(result['has-samples']).toBe(true);
     expect(result['has-mb']).toBe(true);
@@ -213,7 +223,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
          :severity (= (:severity rule) :critical)
          :duration (= (:duration-seconds rule) 300)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.name).toBe(true);
     expect(result.severity).toBe(true);
     expect(result.duration).toBe(true);
@@ -233,7 +244,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
         {:fired (string? (:alert-name fired))
          :resolved (string? (:alert-name resolved))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.fired).toBe(true);
     expect(result.resolved).toBe(true);
   });
@@ -250,7 +262,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
         {:has-rules (> (:total-rules stats) 0)
          :has-active (number? (:active-alerts stats))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-rules']).toBe(true);
     expect(result['has-active']).toBe(true);
   });
@@ -269,7 +282,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
          :has-types (:by-type stats)
          :has-memory (:memory-estimate stats)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-total']).toBe(true);
     expect(result['has-types']).toBeDefined();
     expect(result['has-memory']).toBeDefined();
@@ -289,7 +303,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
         {:counters (> (count counters) 0)
          :gauges (> (count gauges) 0)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.counters).toBe(true);
     expect(result.gauges).toBe(true);
   });
@@ -308,7 +323,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
          :has-timeout (str-includes? config "10s")
          :has-path (str-includes? config "metrics_path")})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-job']).toBe(true);
     expect(result['has-interval']).toBe(true);
     expect(result['has-timeout']).toBe(true);
@@ -328,7 +344,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
         (let [metric (get-metric id)]
           {:value (= (:value metric) 12)}))
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.value).toBe(true);
   });
 
@@ -344,7 +361,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
         (let [rate (calculate-rate id 1000)]
           {:rate-exists (number? rate)}))
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['rate-exists']).toBe(true);
   });
 
@@ -361,7 +379,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
          :has-ids (every? (fn [m] (string? (:id m))) all)
          :has-names (every? (fn [m] (string? (:name m))) all)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.count).toBe(true);
     expect(result['has-ids']).toBe(true);
     expect(result['has-names']).toBe(true);
@@ -380,7 +399,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
         {:count (= (count history) 2)
          :has-events (every? (fn [e] (not (nil? (:event-type e)))) history)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.count).toBe(true);
     expect(result['has-events']).toBe(true);
   });
@@ -397,7 +417,8 @@ describe('Phase 155: Metrics Collection & Aggregation', () => {
       (let [count (count-active-alerts)]
         {:count (> count 0)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.count).toBe(true);
   });
 });

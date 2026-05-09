@@ -20,7 +20,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
          :lr (= (:learning-rate sgd) 0.01)
          :iteration (= (:iteration sgd) 0)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result.lr).toBe(true);
     expect(result.iteration).toBe(true);
@@ -39,7 +40,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:has-params (not (nil? (:params result)))
          :has-optimizer (not (nil? (:optimizer result)))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-params']).toBe(true);
     expect(result['has-optimizer']).toBe(true);
   });
@@ -54,7 +56,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:type (= (:type momentum) :momentum)
          :momentum-val (= (:momentum momentum) 0.9)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result['momentum-val']).toBe(true);
   });
@@ -69,7 +72,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:type (= (:type nesterov) :nesterov)
          :has-velocity (not (nil? (:velocity nesterov)))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result['has-velocity']).toBe(true);
   });
@@ -87,7 +91,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
          :mid (= (Math/round (* lr500 1000)) 50)
          :end (= (Math/abs lr1000) < 0.0001)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.start).toBe(true);
     expect(result.mid).toBe(true);
     expect(result.end).toBe(true);
@@ -104,7 +109,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
             norm (vector-length clipped)]
         {:clipped (>= norm 0.99)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.clipped).toBe(true);
   });
 
@@ -119,7 +125,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
          :beta1 (= (:beta1 adam) 0.9)
          :beta2 (= (:beta2 adam) 0.999)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result.beta1).toBe(true);
     expect(result.beta2).toBe(true);
@@ -138,7 +145,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:has-params (not (nil? (:params result)))
          :optimizer-updated (> (:iteration (:optimizer result)) 0)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-params']).toBe(true);
     expect(result['optimizer-updated']).toBe(true);
   });
@@ -153,7 +161,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:type (= (:type rmsprop) :rmsprop)
          :decay (= (:decay rmsprop) 0.99)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result.decay).toBe(true);
   });
@@ -168,7 +177,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:type (= (:type adagrad) :adagrad)
          :lr (= (:learning-rate adagrad) 0.01)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result.lr).toBe(true);
   });
@@ -183,7 +193,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
             sgd (select-optimizer :sgd)]
         {:adam-ok (= (:type adam) :adam)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['adam-ok']).toBe(true);
   });
 
@@ -199,7 +210,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
          :has-optimizer (not (nil? (:optimizer model)))
          :window-size (= (:window-size model) 100)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-params']).toBe(true);
     expect(result['has-optimizer']).toBe(true);
     expect(result['window-size']).toBe(true);
@@ -220,7 +232,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:updated-count (= (:update-count updated) 1)
          :has-loss (not (nil? (:loss updated)))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['updated-count']).toBe(true);
     expect(result['has-loss']).toBe(true);
   });
@@ -236,7 +249,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:has-detection (boolean? (:drift-detected drift))
          :has-stats (not (nil? (:t-statistic drift)))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-detection']).toBe(true);
     expect(result['has-stats']).toBe(true);
   });
@@ -252,7 +266,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:has-z-score (number? (:z-score drift))
          :has-detection (boolean? (:drift-detected drift))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-z-score']).toBe(true);
     expect(result['has-detection']).toBe(true);
   });
@@ -267,7 +282,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
             avg (sliding-window-average data 3)]
         {:avg-exists (number? avg)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['avg-exists']).toBe(true);
   });
 
@@ -283,7 +299,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
             mean3 (online-mean mean2 2 3.0)]
         {:mean3 (= (Math/round (* mean3 100)) 200)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.mean3).toBe(true);
   });
 
@@ -298,7 +315,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
             adapted (adapt-learning-rate sgd losses :patience 5 :factor 0.5)]
         {:lr-reduced (< (:learning-rate adapted) 0.1)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['lr-reduced']).toBe(true);
   });
 
@@ -314,7 +332,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:has-type (string? (:type summary))
          :has-updates (number? (:total-updates summary))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-type']).toBe(true);
     expect(result['has-updates']).toBe(true);
   });
@@ -330,7 +349,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:has-type (string? (:type diag))
          :has-iteration (number? (:iteration diag))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-type']).toBe(true);
     expect(result['has-iteration']).toBe(true);
   });
@@ -346,7 +366,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:batch-count (> (count batches) 0)
          :first-batch-size (> (count (first batches)) 0)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['batch-count']).toBe(true);
     expect(result['first-batch-size']).toBe(true);
   });
@@ -362,7 +383,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
             metrics (optimizer-metrics adam-with-loss)]
         {:has-loss (number? (:avg-loss metrics))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-loss']).toBe(true);
   });
 
@@ -377,7 +399,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:has-convergence-flag (boolean? (:converged conv))
          :has-ratio (number? (:improvement-ratio conv))})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['has-convergence-flag']).toBe(true);
     expect(result['has-ratio']).toBe(true);
   });
@@ -392,7 +415,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:type (= (:type adadelta) :adadelta)
          :decay (= (:decay adadelta) 0.95)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result.type).toBe(true);
     expect(result.decay).toBe(true);
   });
@@ -409,7 +433,8 @@ describe('Phase 157: Online Learning & Adaptive Algorithms', () => {
         {:iteration-reset (= (:iteration reset) 0)
          :history-reset (= (count (:loss-history reset)) 0)})
     `;
-    const result = interp.eval(code);
+    const ast = interp.parse(code);
+    const result = interp.eval(ast);
     expect(result['iteration-reset']).toBe(true);
     expect(result['history-reset']).toBe(true);
   });
